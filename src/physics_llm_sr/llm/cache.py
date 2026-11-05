@@ -4,7 +4,8 @@ Chave (:func:`cache_key`): SHA-256 de ``[canonical_key(expr), identidade do mode
 variante#hash_do_prompt, hash_do_contexto]``. A identidade (:func:`model_identity`) reúne
 backend, checkpoint, revisão efetiva (SHA do Hub; digest no Ollama) e quantização; o
 backend simulado tem identidade própria que nunca coincide com a de um modelo real.
-O escore não depende dos dados, então a mesma entrada vale entre repetições, níveis de ruído e algoritmos.
+O escore não depende dos dados, então a mesma entrada vale entre repetições, níveis de
+ruído e algoritmos.
 
 Persistência: um registro JSON por linha, só acrescentado (``status = "ok"`` com a
 avaliação e a resposta crua; ``status = "error"`` com a mensagem e as respostas cruas).
@@ -26,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
 from physics_llm_sr.llm.interfaces import BackendError, EquationEvaluation, InvalidScoreValueError
@@ -128,10 +130,13 @@ class EvaluationCache:
 
     @classmethod
     def from_config(cls, llm_config: LLMConfig) -> EvaluationCache | None:
-        """Cache persistido em ``llm.cache_dir``; ``None`` se ``llm.cache_enabled`` é falso."""
+        """Cache persistido em ``llm.cache_dir``; ``None`` se ``llm.cache_enabled`` é falso.
+
+        ``cache_dir`` relativo é resolvido contra a raiz de projeto (``config.paths``).
+        """
         if not llm_config.cache_enabled:
             return None
-        return cls(Path(llm_config.cache_dir) / CACHE_FILENAME)
+        return cls(resolve_project_path(llm_config.cache_dir) / CACHE_FILENAME)
 
     def _load(self, path: Path) -> None:
         with path.open(encoding="utf-8") as fh:

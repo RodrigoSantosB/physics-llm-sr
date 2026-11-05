@@ -152,9 +152,10 @@ def test_ollama_without_digest_or_revision_refuses_cache(library: PromptLibrary)
 def test_quantization_change_is_miss(library: PromptLibrary) -> None:
     cache = EvaluationCache()
     for quant in ("q4", "q8"):
-        backend = OllamaBackend("m", quantization=quant, session=_OllamaSession("d"))
+        session = _OllamaSession("d")
+        backend = OllamaBackend("m", quantization=quant, session=session)
         LLMEquationEvaluator(backend, library, cache=cache).evaluate(GT, CTX, "E")
-        assert backend._session.posts == 1  # type: ignore[attr-defined]
+        assert session.posts == 1
 
 
 def test_context_hash_sensitive_to_units_and_gt() -> None:

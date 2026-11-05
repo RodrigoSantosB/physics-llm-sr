@@ -10,6 +10,7 @@ Formato esperado do DataFrame local (uma linha por execução/repetição): ver
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +47,16 @@ LLM_ALIASES: dict[str, str] = {
 """Mapeamento único dos nomes de LLM do CSV publicado para os nomes canônicos das configs
 (``llm.models[].name``). Aplicado na carga e no DataFrame local."""
 _COND = ["scenario", "sr", "llm", "prompt", "noise_type", "noise_location", "noise_level"]
-_PAPER_DIR = Path(__file__).resolve().parents[3] / "references" / "paper_results"
+REFERENCES_DIR_ENV = "PHYSICS_LLM_SR_REFERENCES_DIR"
+"""Variável de ambiente com o diretório ``references/`` (ex.: no Colab, após clonar o repo)."""
+REFERENCES_DIRNAME = "references"
+PAPER_RESULTS_DIRNAME = "paper_results"
+_PAPER_TABLE_FILES = (
+    "table2_prompt_sensitivity.csv",
+    "table3_noise_zero_mean.csv",
+    "table4_noise_biased.csv",
+    "table5_benchmark_supplement.csv",
+)
 
 
 class ComparisonError(ValueError):
@@ -197,17 +207,51 @@ def classify_cell(
     )  # fmt: skip
 
 
-def load_paper_results(directory: Path | None = None) -> pd.DataFrame:
-    """Carrega as Tabelas 2-5 (formato longo) de ``references/paper_results``."""
-    base = directory or _PAPER_DIR
+def _is_references_dir(path: Path) -> bool:
+    return (path / PAPER_RESULTS_DIRNAME / _PAPER_TABLE_FILES[0]).is_file()
+
+
+def resolve_references_dir(explicit: str | Path | None = None) -> Path:
+    """Localiza ``references/``: argumento -> ``$PHYSICS_LLM_SR_REFERENCES_DIR`` -> raiz do repo.
+
+    A raiz do repo é buscada em ancestrais do pacote e do diretório atual (igual aos prompts).
+
+    Raises:
+        FileNotFoundError: nenhum candidato válido; a mensagem cita a variável de ambiente.
+    """
+    if explicit is not None:
+        path = Path(explicit).expanduser().resolve()
+        if not _is_references_dir(path):
+            raise FileNotFoundError(f"diretório de referências inválido: {path}")
+        return path
+    env = os.environ.get(REFERENCES_DIR_ENV)
+    if env:
+        path = Path(env).expanduser().resolve()
+        if not _is_references_dir(path):
+            raise FileNotFoundError(f"{REFERENCES_DIR_ENV}={env!r} não contém paper_results/")
+        return path
+    tried: list[Path] = []
+    for start in (Path(__file__).resolve().parent, Path.cwd().resolve()):
+        for ancestor in (start, *start.parents):
+            candidate = ancestor / REFERENCES_DIRNAME
+            tried.append(candidate)
+            if _is_references_dir(candidate):
+                return candidate
+    raise FileNotFoundError(
+        f"diretório 'references/' não encontrado; defina {REFERENCES_DIR_ENV}. Tentados: {tried}"
+    )
+
+
+def load_paper_results(references_dir: str | Path | None = None) -> pd.DataFrame:
+    """Carrega as Tabelas 2-5 (formato longo) de ``<references>/paper_results``.
+
+    ``references_dir``: ver :func:`resolve_references_dir`. Nomes de LLM são normalizados
+    por :data:`LLM_ALIASES`.
+    """
+    base = resolve_references_dir(references_dir) / PAPER_RESULTS_DIRNAME
     frames = [
         pd.read_csv(base / name, dtype={"value": str, "prompt": str, "source_page": str})
-        for name in (
-            "table2_prompt_sensitivity.csv",
-            "table3_noise_zero_mean.csv",
-            "table4_noise_biased.csv",
-            "table5_benchmark_supplement.csv",
-        )
+        for name in _PAPER_TABLE_FILES
     ]
     df = pd.concat(frames, ignore_index=True)
     df["value"] = df["value"].astype(float)
@@ -303,6 +347,7 @@ def _baseline_published(row: pd.Series[Any], paper: pd.DataFrame) -> float | Non
 def compare_with_paper(
     results: pd.DataFrame,
     paper: pd.DataFrame | None = None,
+    references_dir: str | Path | None = None,
     tables: Sequence[int] = (2, 3, 4, 5),
     unspecified_llm: str | None = None,
     unspecified_prompt: str | None = None,
@@ -327,7 +372,7 @@ def compare_with_paper(
             "coluna 'track' ausente: sem ela não se distingue paper_replication de "
             "extended_analysis (extended nunca vira reprodução)"
         )
-    paper_df = load_paper_results() if paper is None else paper.copy()
+    paper_df = load_paper_results(references_dir) if paper is None else paper.copy()
     paper_df["llm"] = paper_df["llm"].map(canonical_llm)
     results = results.copy()
     results["llm"] = results["llm"].map(canonical_llm)
