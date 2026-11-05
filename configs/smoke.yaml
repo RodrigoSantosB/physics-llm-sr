@@ -23,7 +23,9 @@ llm:
   max_retries: 1
   failure_policy: retry
   prompt_variants: [E]
+  cache_enabled: true
   cache_dir: .cache/llm_smoke
+  ollama_endpoint: http://localhost:11434   # usado só com backend ollama
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
   request_timeout_s: 120.0

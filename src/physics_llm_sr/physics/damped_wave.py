@@ -131,17 +131,17 @@ class DampedWaveScenario:
         return PhysicalContext(
             scenario=NAME,
             variable_descriptions={
-                "mass": "massa (irrelevante)",
-                "length": "posição x ao longo da direção de propagação",
-                "height": "altura (irrelevante)",
-                "damping": "coeficiente de amortecimento alpha da onda",
-                "t": "tempo",
-                "field": "campo elétrico E(x, t) da onda",
+                "mass": "mass (irrelevant)",
+                "length": "position x along the propagation direction",
+                "height": "height (irrelevant)",
+                "damping": "damping coefficient alpha of the wave",
+                "t": "time",
+                "field": "electric field E(x, t) of the wave",
             },
             experiment_description=(
-                f"Onda eletromagnética plana amortecida com amplitude E0 = {c.amplitude} V/m, "
-                f"número de onda k = {c.wave_number} rad/m e frequência angular "
-                f"omega = {c.angular_frequency} rad/s. A amplitude decai como exp(-alpha t/2)."
+                f"Damped plane electromagnetic wave with amplitude E0 = {c.amplitude} V/m, "
+                f"wave number k = {c.wave_number} rad/m and angular frequency "
+                f"omega = {c.angular_frequency} rad/s. The amplitude decays as exp(-alpha t/2)."
             ),
             ground_truth=(
                 f"{c.amplitude!r}*exp(-damping*t/2)"

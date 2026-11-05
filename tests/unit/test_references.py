@@ -331,3 +331,14 @@ def test_runtime_csv_schema() -> None:
         for column in RUNTIME_COLUMNS[5:12]:
             assert float(row[column]) >= 0.0
         assert SOURCE_PAGE_PATTERN.match(row["source_page"])
+
+
+def test_h04_matches_implemented_invalid_response_policy() -> None:
+    text = (
+        Path(__file__).resolve().parents[2] / "references" / "scientific_assumptions.md"
+    ).read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| H-04 |"))
+    assert "EvaluationFailedError" in row and "llm.max_retries" in row
+    assert "Não há nota substituta" in row
+    assert "llm.invalid_policy" not in row and "llm.max_invalid_rate" not in row
+    assert "5%" not in row

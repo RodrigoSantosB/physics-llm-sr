@@ -125,16 +125,17 @@ class HarmonicMotionScenario:
         return PhysicalContext(
             scenario=NAME,
             variable_descriptions={
-                "mass": "massa presa à mola",
-                "length": "amplitude A do movimento (deslocamento inicial)",
-                "height": "altura (irrelevante)",
-                "damping": "coeficiente de amortecimento (irrelevante; sem dissipação)",
-                "t": "tempo decorrido desde que a massa foi solta",
-                "displacement": "deslocamento x da massa em relação ao equilíbrio",
+                "mass": "mass attached to the spring",
+                "length": "amplitude A of the motion (initial displacement)",
+                "height": "height (irrelevant)",
+                "damping": "damping coefficient (irrelevant; no dissipation)",
+                "t": "time elapsed since the mass was released",
+                "displacement": "displacement x of the mass from equilibrium",
             },
             experiment_description=(
-                f"Massa presa a uma mola ideal de constante k = {self.config.spring_constant} N/m, "
-                "solta do repouso na amplitude A, sem atrito. Prevê-se o deslocamento x(t)."
+                "Mass attached to an ideal spring with constant "
+                f"k = {self.config.spring_constant} N/m, released from rest at amplitude A, "
+                "without friction. The displacement x(t) is predicted."
             ),
             ground_truth=f"length*cos({argument})",
             units=dict(UNITS),

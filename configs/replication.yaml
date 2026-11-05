@@ -74,15 +74,17 @@ llm:
   max_retries: 3
   failure_policy: retry
   prompt_variants: [A, B, C, D, E, F, G, H]
+  cache_enabled: true
   cache_dir: .cache/llm
+  ollama_endpoint: http://localhost:11434   # usado só com backend ollama
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
   request_timeout_s: 120.0
   seed: 42
-  models:                             # GAP-07 (revision: fixar SHA antes da execução final)
-    - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: null, quantization: fp16, infra: colab-a100}
-    - {name: llama2, checkpoint: meta-llama/Llama-2-7b-chat-hf, revision: null, quantization: fp16, infra: colab-a100}
-    - {name: falcon, checkpoint: tiiuae/falcon-7b-instruct, revision: null, quantization: fp16, infra: colab-a100}
+  models:                             # GAP-07 (revision: SHA fixado)
+    - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: ec5deb64f2c6e6fa90c1abf74a91d5c93a9669ca, quantization: fp16, infra: colab-a100}
+    - {name: llama2, checkpoint: meta-llama/Llama-2-7b-chat-hf, revision: f5db02db724555f92da89c216ac04704f23d4590, quantization: fp16, infra: colab-a100}
+    - {name: falcon, checkpoint: tiiuae/falcon-7b-instruct, revision: 8782b5c5d8c9290412416618f36a133653e85285, quantization: fp16, infra: colab-a100}
 experiments:
   run: [baseline, llm_integration, prompt_sensitivity, noise_robustness, biased_noise]
   repetitions: 25                     # artigo

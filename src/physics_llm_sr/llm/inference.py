@@ -131,9 +131,9 @@ class FakeBackend:
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 OLLAMA_HOST_ENV = "OLLAMA_HOST"
 OLLAMA_ENDPOINTS: tuple[str, ...] = ("chat", "generate")
-#: Semente fixa de inferência (campo de schema proposto: ``llm.seed``).
+#: Semente de inferência quando o backend é criado sem config (``llm.seed``).
 DEFAULT_INFERENCE_SEED = 0
-#: Timeout HTTP por requisição, em segundos (campo proposto: ``llm.request_timeout``).
+#: Timeout HTTP por requisição sem config, em segundos (``llm.request_timeout_s``).
 DEFAULT_REQUEST_TIMEOUT_S = 300.0
 #: Tokens máximos gerados quando não vem da config (``llm.max_new_tokens``).
 DEFAULT_MAX_NEW_TOKENS = 256
@@ -260,7 +260,7 @@ class OllamaBackend:
 
 # ----------------------------------------------------------------------- transformers
 
-#: Tamanho de lote padrão (campo de schema proposto: ``llm.batch_size``).
+#: Tamanho de lote sem config (``llm.batch_size``).
 DEFAULT_HF_BATCH_SIZE = 8
 #: Rótulo de precisão registrado no manifesto (GAP-07: fp16).
 HF_QUANTIZATION = "fp16"
@@ -423,15 +423,13 @@ def build_backend(
     llm_config: LLMConfig,
     model_name: str,
     *,
-    track: Track = Track.PAPER_REPLICATION,
-    batch_size: int = DEFAULT_HF_BATCH_SIZE,
-    seed: int = DEFAULT_INFERENCE_SEED,
-    request_timeout: float = DEFAULT_REQUEST_TIMEOUT_S,
+    track: Track,
 ) -> TextGenerationBackend:
     """Instancia o backend de ``llm_config.backend`` para o modelo ``model_name``.
 
-    ``batch_size``, ``seed`` e ``request_timeout`` ainda não existem no schema (campos
-    propostos ``llm.batch_size``, ``llm.seed``, ``llm.request_timeout``).
+    Lê da config: ``batch_size``, ``seed``, ``request_timeout_s``, ``ollama_endpoint``,
+    ``max_new_tokens`` e ``temperature``. ``track`` (``ExperimentConfig.track``) decide se a
+    revisão (SHA) do modelo é obrigatória (``paper_replication``).
     """
     by_name = {m.name: m for m in llm_config.models}
     if model_name not in by_name:
@@ -444,10 +442,11 @@ def build_backend(
     if llm_config.backend == "ollama":
         return OllamaBackend(
             model.checkpoint,
+            base_url=llm_config.ollama_endpoint,
             temperature=llm_config.temperature,
-            seed=seed,
+            seed=llm_config.seed,
             num_predict=llm_config.max_new_tokens,
-            timeout=request_timeout,
+            timeout=llm_config.request_timeout_s,
             revision=model.revision,
             quantization=model.quantization,
             infra=model.infra,
@@ -458,8 +457,8 @@ def build_backend(
             model.revision,
             track=track,
             max_new_tokens=llm_config.max_new_tokens,
-            batch_size=batch_size,
-            seed=seed,
+            batch_size=llm_config.batch_size,
+            seed=llm_config.seed,
             infra=model.infra,
         )
     raise BackendConfigurationError(f"backend desconhecido: {llm_config.backend!r}")
