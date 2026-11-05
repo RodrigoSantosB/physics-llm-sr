@@ -1,5 +1,5 @@
 .PHONY: install check test test-julia test-llm-real notebook-smoke lint format \
-	smoke pilot pilot-colab report
+	smoke pilot pilot-colab report compare
 
 NOT_OPT_IN = not slow and not julia and not llm_real
 NOTEBOOK = notebooks/01_full_paper_reproduction.ipynb
@@ -59,3 +59,8 @@ pilot-colab:
 report:
 	@test -n "$(RUN_DIR)" || (echo "uso: make report RUN_DIR=results/<cfg>/<run_id>" && exit 2)
 	$(CLI) report $(RUN_DIR)
+
+# Tabelas e figuras artigo x local: make compare RUNS="results/pilot/<id> results/pilot_extended/<id>" [OUT=dir]
+compare:
+	@test -n "$(RUNS)" || (echo 'uso: make compare RUNS="<run_dir1> <run_dir2>" [OUT=<dir>]' && exit 2)
+	uv run python -m physics_llm_sr.analysis --runs $(RUNS) $(if $(OUT),--out $(OUT),)

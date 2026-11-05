@@ -108,6 +108,15 @@ referência ao artigo, chamada ao módulo Python e visualização com interpreta
 - `ARM`: `replication` (perda literal) ou `extended` (normalizada, desvio).
 - `LOAD_EXISTING_RUN` (opcional): caminho de um `run_dir` existente (por exemplo, o do piloto) para **apresentar** os resultados sem executar.
 
+## Comparação artigo × experimentos locais
+
+`make compare RUNS="results/pilot/<id> results/pilot_extended/<id>" OUT=results/analysis/x` (ou
+`python -m physics_llm_sr.analysis --runs ... --out ...`) gera, a partir dos arquivos persistidos, tabelas
+(CSV, Markdown, LaTeX booktabs e `tabelas.tex` mestre), figuras F1–F8 (PNG 200 dpi e PDF) e um `INDEX.md` com a
+tabela do artigo correspondente e o rótulo de execução de cada artefato. Aceita qualquer modo/trilha. Célula sem
+dado local aparece como `n/e` (não executado), nunca como zero. O notebook `notebooks/02_paper_comparison.ipynb`
+(gerado por `notebooks/build_paper_comparison.py`) apresenta tudo com perguntas de leitura guiada.
+
 ## Modos e trilhas: o que pode ser apresentado como reprodução
 
 | Modo / trilha | Para que serve | Pode ser apresentado como reprodução? |
