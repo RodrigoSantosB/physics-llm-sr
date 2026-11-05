@@ -30,6 +30,7 @@ test-llm-real:
 # Executa o notebook principal em RUN_PROFILE="smoke" (valor padrão do notebook), de ponta a ponta,
 # sem LLM real. O notebook executado vai para results/notebook_smoke/.
 notebook-smoke:
+	PHYSICS_LLM_SR_NOTEBOOK_PRESET=smoke \
 	uv run jupyter nbconvert --to notebook --execute $(NOTEBOOK) \
 		--ExecutePreprocessor.timeout=3600 --ExecutePreprocessor.kernel_name=python3 \
 		--output-dir results/notebook_smoke --output 01_full_paper_reproduction.executed.ipynb

@@ -229,3 +229,24 @@ def test_build_evaluator_fake_backend() -> None:
 
 def test_detect_colab_is_false_without_google_package() -> None:
     assert colab.detect_colab() is False
+
+
+def test_clone_is_shallow_on_branch_and_pulls_when_repo_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = colab.DEFAULT_REPO_URL
+    assert url == "https://github.com/RodrigoSantosB/physics-llm-sr.git"
+    plan = colab.setup_environment(
+        repo_dir="/content/physics-llm-sr", repo_url=url, in_colab=True, dry_run=True
+    )
+    clone = next(a for a in plan.actions if a.kind == "clone")
+    assert clone.command is not None
+    assert clone.command[:6] == ("git", "clone", "--depth", "1", "-b", "main")
+    # repositório já existente com .git: git pull --ff-only (sem clonar)
+    (tmp_path / ".git").mkdir()
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **_: calls.append(tuple(cmd)))
+    existing = colab.EnvironmentPlan(in_colab=True, repo_dir=tmp_path)
+    existing.actions.append(colab.SetupAction("clone", "x", ("git", "clone", url, str(tmp_path))))
+    colab._execute(existing, {})
+    assert calls == [("git", "-C", str(tmp_path), "pull", "--ff-only")]

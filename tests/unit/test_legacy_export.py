@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,8 @@ import pytest
 from physics_llm_sr.analysis import legacy_export as lx
 from physics_llm_sr.analysis.loading import AnalysisError
 
-REF = Path("/home/rsb6/Desktop/Diciplinas Mestrado/DL/reproducao/real")
+#: Pasta da reprodução anterior (formato de referência); sem a variável, os testes que a usam são pulados.
+REF = Path(os.environ.get("PHYSICS_LLM_SR_LEGACY_REF", "/nonexistent-legacy-ref"))
 RESULT_COLS = (
     "key,scenario,sr,llm,prompt,noise_mode,noise_level,biased,rep,MAE,MSE,one_minus_R2,R2,"
     "distance,size,plaus,loss,equation,raw_equation,n_generations,n_evaluated,sr_seconds,"

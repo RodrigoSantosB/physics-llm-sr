@@ -1,0 +1,182 @@
+mode: smoke
+track: paper_replication
+seeds:
+  master: 42
+physics:
+  sampling:
+    mass:
+      low: 0.1
+      high: 10.0
+    length:
+      low: 0.01
+      high: 0.5
+    height:
+      low: 1.0
+      high: 100.0
+    damping:
+      low: 0.0
+      high: 1.0
+  free_fall:
+    gravity: 9.81
+  harmonic_motion:
+    spring_constant: 10.0
+    phase: 0.0
+  damped_wave:
+    amplitude: 1.0
+    wave_number: 6.283185307179586
+    angular_frequency: 6.283185307179586
+data:
+  n_simulations: 5
+  n_time_points: 20
+  max_steps: 1000
+  split:
+    train: 0.7
+    validation: 0.15
+    test: 0.15
+  noise:
+    sigma_fraction: 0.01
+    location: target
+  exp4:
+    levels: &id001
+    - 0.01
+    - 0.05
+    locations: &id002
+    - target
+  exp5:
+    mean_fraction: 0.01
+    levels: *id001
+    locations: *id002
+symbolic:
+  division_epsilon: 0.001
+  division_fallback: 1.0
+  log_epsilon: 0.001
+  exp_clip: 100.0
+  power_clip: 1000000.0
+  tree_distance_constant_penalty: 1.0
+  tree_distance:
+    descend_on_operator_mismatch: true
+    canonicalize: true
+sr:
+  population: 10
+  generations: 3
+  early_stopping:
+    enabled: true
+    min_relative_improvement: 0.001
+    patience: 3
+  deap:
+    crossover_prob: 0.05
+    mutation_prob: 0.01
+    tournament_size: 3
+    max_depth: 8
+    init_min_depth: 1
+    init_max_depth: 3
+  gplearn:
+    parsimony_coefficient: 0.001
+    tournament_size: 3
+    p_crossover: 0.9
+    p_subtree_mutation: 0.01
+    p_hoist_mutation: 0.01
+    p_point_mutation: 0.01
+    init_depth:
+    - 1
+    - 8
+    const_range:
+    - -1.0
+    - 1.0
+  pysr:
+    loss: huber
+    huber_delta: 1.0
+    niterations: null
+    populations: 1
+    population_size: null
+    ncycles_per_iteration: 380
+    maxsize: 30
+    tournament_selection_n: 15
+  operators:
+    deap:
+    - add
+    - sub
+    - mul
+    - div
+    - neg
+    - exp
+    - log
+    - sin
+    - cos
+    gplearn:
+    - add
+    - sub
+    - mul
+    - div
+    - neg
+    - exp
+    - log
+    - sin
+    - cos
+    pysr:
+    - add
+    - sub
+    - mul
+    - div
+    - pow
+    - neg
+    - exp
+    - log
+    - sin
+    - cos
+loss:
+  w1: 0.3333333333333333
+  w2: 0.3333333333333333
+  w3: 0.3333333333333334
+  normalization: literal
+  baseline_weights:
+  - 0.5
+  - 0.5
+  - 0.0
+llm:
+  backend: fake
+  models:
+  - name: fake
+    checkpoint: fake-evaluator
+    revision: null
+    quantization: null
+    infra: local
+  temperature: 0.0
+  max_new_tokens: 64
+  max_retries: 1
+  failure_policy: retry
+  prompt_variants:
+  - A
+  - D
+  - E
+  cache_enabled: true
+  cache_dir: .cache/llm_smoke
+  prompts_dir: null
+  cache_significant_digits: 3
+  cache_key_mode: exact
+  ollama_endpoint: http://localhost:11434
+  batch_size: 1
+  request_timeout_s: 120.0
+  seed: 42
+  evaluation_scope: all
+  top_k: null
+experiments:
+  run:
+  - baseline
+  - llm_integration
+  - prompt_sensitivity
+  - noise_robustness
+  - biased_noise
+  repetitions: 1
+  scenarios:
+  - free_fall
+  algorithms:
+  - deap
+  - gplearn
+  models:
+  - fake
+  benchmark_prompt: E
+  noise_model: fake
+  noise_prompt: E
+  max_cell_seconds: null
+output_dir: results/notebook_smoke/replication
