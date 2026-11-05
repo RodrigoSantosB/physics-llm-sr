@@ -1,5 +1,5 @@
 .PHONY: install check test test-julia test-llm-real notebook-smoke lint format \
-	smoke pilot pilot-colab report compare
+	smoke pilot pilot-colab report compare export-legado
 
 NOT_OPT_IN = not slow and not julia and not llm_real
 NOTEBOOK = notebooks/01_full_paper_reproduction.ipynb
@@ -64,3 +64,8 @@ report:
 compare:
 	@test -n "$(RUNS)" || (echo 'uso: make compare RUNS="<run_dir1> <run_dir2>" [OUT=<dir>]' && exit 2)
 	uv run python -m physics_llm_sr.analysis --runs $(RUNS) $(if $(OUT),--out $(OUT),)
+
+# Exporta no formato legado (comparação direta): make export-legado RUNS="results/pilot/<id>" OUT=results/legado/literal
+export-legado:
+	@test -n "$(RUNS)" -a -n "$(OUT)" || (echo 'uso: make export-legado RUNS="<run_dir>..." OUT=<dir>' && exit 2)
+	uv run python -m physics_llm_sr.analysis.legacy_export --runs $(RUNS) --out $(OUT)

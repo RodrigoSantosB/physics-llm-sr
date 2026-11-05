@@ -117,6 +117,15 @@ tabela do artigo correspondente e o rótulo de execução de cada artefato. Acei
 dado local aparece como `n/e` (não executado), nunca como zero. O notebook `notebooks/02_paper_comparison.ipynb`
 (gerado por `notebooks/build_paper_comparison.py`) apresenta tudo com perguntas de leitura guiada.
 
+## Exportação no formato legado
+
+`make export-legado RUNS="results/pilot/<id>" OUT=results/legado/literal` (ou
+`python -m physics_llm_sr.analysis.legacy_export --runs ... --out ...`) grava os resultados persistidos nos
+nomes de arquivo e colunas de uma reprodução anterior (`resultados_{benchmark,prompts,ruido}.csv`,
+`llm_cache.jsonl`, `commit.txt`, `tabelas_<modo>/` com tabelas 2–6, overhead e figuras) para comparação direta.
+Use uma saída por braço (literal/normalizada). `FORMATO_LEGADO.md` documenta cada coluna e o rótulo de execução
+reduzida; campos sem origem (ex.: `n_evaluated`) ficam `nan`.
+
 ## Modos e trilhas: o que pode ser apresentado como reprodução
 
 | Modo / trilha | Para que serve | Pode ser apresentado como reprodução? |
