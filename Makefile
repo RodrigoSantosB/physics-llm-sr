@@ -43,14 +43,15 @@ smoke:
 
 # Piloto local (Ollama mistral:7b-instruct), DOIS braços: paper_replication (literal) e
 # extended_analysis (normalized). Diretórios separados; nunca misturar nas tabelas.
+# Células com erro (ex.: PySR/Julia indisponível) não impedem o segundo braço.
 pilot:
-	$(CLI) run --config configs/pilot.yaml $(RESUME_FLAG)
-	$(CLI) run --config configs/pilot_extended.yaml $(RESUME_FLAG)
+	-$(CLI) run --config configs/pilot.yaml $(RESUME_FLAG)
+	-$(CLI) run --config configs/pilot_extended.yaml $(RESUME_FLAG)
 
 # Piloto Colab A100 (transformers fp16), dois braços.
 pilot-colab:
-	$(CLI) run --config configs/colab_pilot.yaml $(RESUME_FLAG)
-	$(CLI) run --config configs/colab_pilot_extended.yaml $(RESUME_FLAG)
+	-$(CLI) run --config configs/colab_pilot.yaml $(RESUME_FLAG)
+	-$(CLI) run --config configs/colab_pilot_extended.yaml $(RESUME_FLAG)
 
 # Relatório/figuras a partir dos arquivos persistidos: make report RUN_DIR=results/smoke/<id>
 report:

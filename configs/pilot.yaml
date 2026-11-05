@@ -1,4 +1,6 @@
 # Piloto local (validação em Linux/GTX 1060): free_fall x {DEAP,gplearn,PySR} x Mistral x prompt E x 3 repetições, via Ollama (Q4 = desvio).
+# Braço paper_replication (literal, pesos GAP-01). O braço extended_analysis está em pilot_extended.yaml;
+# `make pilot` roda os dois (onda 5).
 mode: pilot
 track: paper_replication
 seeds:
