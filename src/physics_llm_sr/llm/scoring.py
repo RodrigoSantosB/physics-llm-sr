@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
-from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash
+from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash, model_identity
 from physics_llm_sr.llm.interfaces import (
     BackendError,
     EquationEvaluation,
@@ -165,9 +165,11 @@ class LLMEquationEvaluator:
             BackendError: falha do backend (não reexecutada).
         """
         self.metrics.requested += len(expressions)
+        resolve = getattr(self.backend, "resolve_identity", None)
+        if callable(resolve):
+            resolve()  # Ollama: digest efetivo do modelo (entra na chave do cache)
         meta = self.backend.model_metadata()
-        model_id = str(meta.get("checkpoint"))
-        revision = meta.get("revision")
+        identity = model_identity(meta) if self.cache is not None else {}
         ctx_digest = context_hash(physical_context)
         prompt_hash = self.prompt_library.prompt_hash(prompt_variant)
         order: list[str] = []
@@ -179,7 +181,7 @@ class LLMEquationEvaluator:
             if key in results or key in pending:
                 self.metrics.deduplicated += 1
                 continue
-            ckey = cache_key(expr, model_id, revision, prompt_variant, prompt_hash, ctx_digest)
+            ckey = cache_key(expr, identity, prompt_variant, prompt_hash, ctx_digest)
             cached = self.cache.get(ckey) if self.cache is not None else None
             if cached is not None:
                 self.metrics.cache_hits += 1

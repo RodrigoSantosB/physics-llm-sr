@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.reproducibility.manifests import RunManifest
 
 MANIFEST_FILENAME = "manifest.json"
@@ -56,8 +57,11 @@ def load_parquet(path: str | Path) -> pd.DataFrame:
 
 
 def create_run_dir(output_dir: str | Path, run_id: str) -> Path:
-    """Cria ``output_dir/run_id``; falha se já existir (execuções não se sobrescrevem)."""
-    run_dir = Path(output_dir) / run_id
+    """Cria ``output_dir/run_id``; falha se já existir (execuções não se sobrescrevem).
+
+    ``output_dir`` relativo é resolvido contra a raiz de projeto (``config.paths``).
+    """
+    run_dir = resolve_project_path(output_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
 

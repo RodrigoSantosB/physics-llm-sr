@@ -12,15 +12,16 @@ import shutil
 import subprocess
 import sys
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from pydantic import BaseModel
 
 from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.core_types import Dataset
+from physics_llm_sr.data.validation import compute_data_hash
 
 UNKNOWN = "unknown"
 RUN_ID_UUID_CHARS = 8
@@ -51,7 +52,7 @@ class RunManifest(BaseModel):
     mode: str
     track: str
     config_hash: str
-    data_hash: str | None
+    data_hashes: dict[str, str]
     git_sha: str
     git_dirty: bool | None
     python_version: str
@@ -64,6 +65,10 @@ class RunManifest(BaseModel):
     prompt: dict[str, Any] | None
     timings: dict[str, float]
     interruption: str | None
+    metrics: dict[str, Any]
+    discovered_expressions: list[dict[str, Any]]
+    history_file: str | None
+    stop_conditions: dict[str, Any]
 
 
 def new_run_id() -> str:
@@ -78,20 +83,8 @@ def hash_config(config: BaseModel) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _update_with_array(h: Any, arr: np.ndarray[Any, Any]) -> None:
-    contiguous = np.ascontiguousarray(arr)
-    h.update(str(contiguous.dtype).encode())
-    h.update(str(contiguous.shape).encode())
-    h.update(contiguous.tobytes())
-
-
-def hash_dataset(dataset: Dataset) -> str:
-    """SHA-256 do conteúdo numérico e dos nomes de um ``Dataset``."""
-    h = hashlib.sha256()
-    for arr in (dataset.X, dataset.y_true, dataset.y_observed, dataset.simulation_ids, dataset.t):
-        _update_with_array(h, arr)
-    h.update(json.dumps([dataset.feature_names, dataset.target_name, dataset.scenario]).encode())
-    return h.hexdigest()
+#: Único algoritmo de hash de dataset do projeto (``data.validation``).
+hash_dataset = compute_data_hash
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> str | None:
@@ -162,27 +155,46 @@ def hardware_info() -> dict[str, Any]:
 def build_manifest(
     config: ExperimentConfig,
     *,
-    dataset: Dataset | None = None,
+    datasets: Mapping[str, Dataset] | None = None,
     seeds: dict[str, int] | None = None,
     prompt: dict[str, Any] | None = None,
     timings: dict[str, float] | None = None,
     interruption: str | None = None,
+    metrics: dict[str, Any] | None = None,
+    discovered_expressions: list[dict[str, Any]] | None = None,
+    history_file: str | Path | None = None,
+    backends: Mapping[str, Any] | None = None,
     run_id: str | None = None,
     repo_dir: str | Path | None = None,
 ) -> RunManifest:
-    """Monta o manifesto de uma execução a partir da config e do ambiente atual."""
+    """Monta o manifesto de uma execução a partir da config e do ambiente atual.
+
+    ``datasets``: ``{rótulo dataset/condição: Dataset}`` (um hash por entrada, via
+    :func:`hash_dataset`). ``backends``: ``{nome do modelo: backend}``; cada entrada de
+    ``llm_models`` ganha ``effective`` = ``backend.model_metadata()`` (SHA/digest efetivos,
+    após ``resolve_identity()`` quando existir). ``history_file`` é só o ponteiro para o
+    histórico de busca; ``stop_conditions`` junta a regra de parada da config e a
+    interrupção observada.
+    """
     where = Path(repo_dir) if repo_dir is not None else Path(__file__).parent
     selected = set(config.experiments.models)
     models = [
         m.model_dump(mode="json") for m in config.llm.models if not selected or m.name in selected
     ]
+    for entry in models:
+        backend = (backends or {}).get(entry["name"])
+        if backend is not None:
+            resolve = getattr(backend, "resolve_identity", None)
+            if callable(resolve):
+                resolve()
+            entry["effective"] = backend.model_metadata()
     return RunManifest(
         run_id=run_id or new_run_id(),
         created_at=datetime.now(timezone.utc).isoformat(),
         mode=config.mode.value,
         track=config.track.value,
         config_hash=hash_config(config),
-        data_hash=hash_dataset(dataset) if dataset is not None else None,
+        data_hashes={k: hash_dataset(d) for k, d in (datasets or {}).items()},
         git_sha=git_sha(where),
         git_dirty=_git_dirty(where),
         python_version=sys.version.split()[0],
@@ -201,4 +213,11 @@ def build_manifest(
         prompt=prompt,
         timings=dict(timings or {}),
         interruption=interruption,
+        metrics=dict(metrics or {}),
+        discovered_expressions=list(discovered_expressions or []),
+        history_file=None if history_file is None else str(history_file),
+        stop_conditions={
+            "early_stopping": config.sr.early_stopping.model_dump(mode="json"),
+            "interruption": interruption,
+        },
     )

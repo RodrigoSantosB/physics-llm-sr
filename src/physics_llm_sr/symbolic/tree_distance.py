@@ -54,9 +54,9 @@ class TreeDistanceParams:
     canonicalize: bool = DEFAULT_CANONICALIZE
 
     def __post_init__(self) -> None:
-        """Valida ``alpha ∈ [0, 1]``."""
-        if not 0.0 <= self.alpha <= LOCAL_COST_MAX:
-            raise ValueError(f"alpha deve estar em [0, 1], recebeu {self.alpha}")
+        """Valida ``alpha ∈ (0, 1]`` (GAP-10: alpha=0 daria d=0 a constantes diferentes)."""
+        if not 0.0 < self.alpha <= LOCAL_COST_MAX:
+            raise ValueError(f"alpha deve estar em (0, 1], recebeu {self.alpha}")
 
     @classmethod
     def from_config(cls, cfg: SymbolicConfig) -> TreeDistanceParams:

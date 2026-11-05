@@ -108,7 +108,6 @@ def test_constant_penalty_is_bounded_and_monotone_in_alpha() -> None:
     small = tree_distance(_p("2.0 * x"), _p("2.1 * x"), TreeDistanceParams(alpha=0.1))
     big = tree_distance(_p("2.0 * x"), _p("2.1 * x"), TreeDistanceParams(alpha=1.0))
     assert 0.0 < small < big < 1 / 3
-    assert tree_distance(a, b, TreeDistanceParams(alpha=0.0)) == 0.0
 
 
 def test_default_params_come_from_config() -> None:
@@ -179,3 +178,10 @@ def test_invalid_alpha_rejected() -> None:
         TreeDistanceParams(alpha=1.5)
     with pytest.raises(ValueError):
         TreeDistanceParams(alpha=-0.1)
+
+
+@pytest.mark.parametrize("alpha", [0.0, -0.5, 1.5])
+def test_alpha_must_be_positive_and_at_most_one(alpha: float) -> None:
+    # GAP-10: alpha=0 faria constantes diferentes terem d=0.
+    with pytest.raises(ValueError, match="alpha"):
+        TreeDistanceParams(alpha=alpha)

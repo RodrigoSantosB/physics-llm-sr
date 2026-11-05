@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
+import pytest
 
 from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.core_types import Dataset, Mode, Track
@@ -18,11 +19,14 @@ from physics_llm_sr.sr.interfaces import (
     LossBreakdown,
     RegressorMetadata,
     SymbolicRegressor,
+    ensure_feature_alignment,
 )
 from physics_llm_sr.symbolic.expression import Expr, Var, to_infix
 
 
 class _Objective:
+    feature_names: tuple[str, ...] = ("a", "b")
+
     def evaluate_population(self, exprs: Sequence[Expr], X: Any, y: Any) -> Sequence[LossBreakdown]:  # noqa: N803
         return [LossBreakdown(total=1.0, e=0.5, s=float(1), c=0.5, evaluation=None) for _ in exprs]
 
@@ -33,9 +37,14 @@ class _Dummy:
         self._history: list[GenerationRecord] = []
 
     def fit(
-        self, dataset: Dataset, objective: CandidateObjective, config: ExperimentConfig
+        self,
+        train: Dataset,
+        objective: CandidateObjective,
+        config: ExperimentConfig,
+        validation: Dataset | None = None,
     ) -> FitResult:
-        (b,) = objective.evaluate_population([self._best], dataset.X, dataset.y_observed)
+        ensure_feature_alignment(train, objective)
+        (b,) = objective.evaluate_population([self._best], train.X, train.y_observed)
         self._history.append(
             GenerationRecord(
                 generation=0,
@@ -50,7 +59,13 @@ class _Dummy:
             )
         )
         return FitResult(
-            best_expression=self._best, history=tuple(self._history), metadata=self.get_metadata()
+            best_expression=self._best,
+            history=tuple(self._history),
+            metadata=self.get_metadata(),
+            elapsed_seconds=0.0,
+            n_generations=1,
+            stop_reason="max_generations",
+            llm_counters={"llm_calls": 0.0},
         )
 
     def predict(self, X: Any) -> Any:  # noqa: N803
@@ -114,3 +129,35 @@ def test_interfaces_do_not_import_optimization() -> None:
 
     src = open(mod.__file__, encoding="utf-8").read()
     assert "physics_llm_sr.optimization" not in src
+
+
+def test_fit_result_new_fields() -> None:
+    cfg = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION)
+    r = _Dummy().fit(_dataset(), _Objective(), cfg)
+    assert r.stop_reason == "max_generations"
+    assert r.n_generations == 1
+    assert r.elapsed_seconds == 0.0
+    assert r.llm_counters["llm_calls"] == 0.0
+
+
+def test_fit_accepts_validation_by_keyword() -> None:
+    cfg = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION)
+    _Dummy().fit(_dataset(), _Objective(), cfg, validation=_dataset())
+
+
+def test_feature_alignment_ok_and_mismatch() -> None:
+    ensure_feature_alignment(_dataset(), _Objective())
+
+    class _Other(_Objective):
+        feature_names = ("b", "a")
+
+    with pytest.raises(ValueError, match="feature_names"):
+        ensure_feature_alignment(_dataset(), _Other())
+
+
+def test_objective_without_feature_names_is_not_a_candidate_objective() -> None:
+    class _NoNames:
+        def evaluate_population(self, exprs: Any, X: Any, y: Any) -> Any:  # noqa: N803
+            return []
+
+    assert not isinstance(_NoNames(), CandidateObjective)

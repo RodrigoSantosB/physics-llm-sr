@@ -266,3 +266,20 @@ def test_symbolic_consumers_read_new_config_fields() -> None:
     assert params.descend_on_operator_mismatch is False
     assert params.canonicalize is False
     assert params.alpha == 1.0
+
+
+@pytest.mark.parametrize("backend", ["fake", "ollama"])
+def test_full_paper_replication_refuses_fake_or_ollama(backend: str) -> None:
+    data = load_config(CONFIGS_DIR / "replication.yaml").model_dump(mode="json")
+    data["llm"]["backend"] = backend
+    with pytest.raises(ConfigError, match="paper_replication.*full|full.*paper_replication"):
+        parse_config(data)
+
+
+def test_pilot_and_extended_may_use_ollama() -> None:
+    data = load_config(CONFIGS_DIR / "replication.yaml").model_dump(mode="json")
+    data["llm"]["backend"] = "ollama"
+    data["mode"] = "pilot"
+    parse_config(data)  # piloto local com Ollama (Q4) é permitido
+    data["mode"], data["track"] = "full", "extended_analysis"
+    parse_config(data)

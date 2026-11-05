@@ -8,13 +8,14 @@ from typing import Any, Literal, get_args
 
 import numpy as np
 
-from physics_llm_sr.config.schemas import NoiseLocation
+from physics_llm_sr.config.schemas import Exp5Config, NoiseLocation
 from physics_llm_sr.core_types import Dataset
 from physics_llm_sr.data.validation import compute_data_hash
 
 NoiseKind = Literal["zero_mean", "biased"]
-#: Fração da média do atributo usada como viés no ruído ``biased`` (Exp5, PRD 7).
-DEFAULT_BIAS_FRACTION = 0.01
+#: Fração da média do atributo usada como viés no ruído ``biased``: fonte única, a config
+#: (``Exp5Config.mean_fraction``).
+DEFAULT_BIAS_FRACTION = Exp5Config().mean_fraction
 
 
 @dataclass(frozen=True)
