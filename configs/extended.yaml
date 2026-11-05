@@ -1,0 +1,84 @@
+# Análise estendida (modo full): mesma base da replicação, com perda normalizada (desvio experimental, GAP-02).
+mode: full
+track: extended_analysis
+seeds:
+  master: 42
+physics:
+  sampling:
+    mass: {low: 0.1, high: 10.0}      # kg (artigo)
+    length: {low: 0.01, high: 0.5}    # m (artigo)
+    height: {low: 1.0, high: 100.0}   # m (artigo)
+    damping: {low: 0.0, high: 1.0}    # 1/s (artigo)
+  free_fall:
+    gravity: 9.81                     # m/s^2
+  harmonic_motion:
+    spring_constant: 10.0             # N/m [hipótese GAP-03]
+    phase: 0.0                        # rad [hipótese GAP-03]
+  damped_wave:
+    amplitude: 1.0                    # V/m [hipótese GAP-03]
+    wave_number: 6.283185307179586    # rad/m = 2*pi [hipótese GAP-03]
+    angular_frequency: 6.283185307179586  # rad/s = 2*pi [hipótese GAP-03]
+data:
+  n_simulations: 500                  # artigo
+  n_time_points: 100                  # ~50 000 amostras/cenário (artigo)
+  max_steps: 1000                     # artigo
+  split: {train: 0.70, validation: 0.15, test: 0.15}  # [hipótese GAP-09]
+  noise: {sigma_fraction: 0.01, location: target}     # artigo: 1% do desvio-padrão
+  exp4:
+    levels: [0.01, 0.02, 0.03, 0.04, 0.05]
+    locations: [inputs, target, both]
+  exp5:
+    mean_fraction: 0.01               # artigo: 1% da média do atributo
+    levels: [0.01, 0.02, 0.03, 0.04, 0.05]
+    locations: [inputs, target, both]
+symbolic:
+  division_epsilon: 1.0e-9            # semântica protegida (decisão de projeto)
+  division_fallback: 1.0
+  log_epsilon: 1.0e-9
+  exp_clip: 50.0
+  power_clip: 1.0e6
+  tree_distance_constant_penalty: 0.5 # [hipótese GAP-11]
+sr:
+  population: 100                     # artigo
+  generations: 50                     # artigo
+  early_stopping: {enabled: true, min_relative_improvement: 0.001, patience: 3}
+  deap:
+    crossover_prob: 0.05              # artigo
+    mutation_prob: 0.01               # artigo
+    tournament_size: 3                # artigo
+    max_depth: 8                      # artigo
+    init_min_depth: 1                 # [hipótese]
+    init_max_depth: 3                 # [hipótese]
+  gplearn:
+    parsimony_coefficient: 0.001      # [hipótese]
+  pysr:
+    loss: huber                       # GAP-05: Huber no termo e, conforme artigo
+    huber_delta: 1.0                  # [hipótese GAP-05]
+  operators:
+    deap: [add, sub, mul, div, exp, log, sin, cos]
+    gplearn: [add, sub, mul, div, exp, log, sin, cos]
+    pysr: [add, sub, mul, div, exp, log, sin, cos]
+loss:
+  w1: 0.3333333333333333              # [hipótese GAP-01] pesos iguais; grade de sensibilidade à parte
+  w2: 0.3333333333333333
+  w3: 0.3333333333333334
+  normalization: normalized           # GAP-02: e=MSE/Var(y_train), s=nós/max_nodes (desvio; só em extended)
+llm:
+  backend: transformers               # Colab A100, fp16
+  temperature: 0.0
+  max_new_tokens: 256
+  max_retries: 3
+  failure_policy: retry
+  prompt_variants: [A, B, C, D, E, F, G, H]
+  cache_dir: .cache/llm
+  models:                             # GAP-07 (revision: fixar SHA antes da execução final)
+    - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: null, quantization: fp16, infra: colab-a100}
+    - {name: llama2, checkpoint: meta-llama/Llama-2-7b-chat-hf, revision: null, quantization: fp16, infra: colab-a100}
+    - {name: falcon, checkpoint: tiiuae/falcon-7b-instruct, revision: null, quantization: fp16, infra: colab-a100}
+experiments:
+  run: [baseline, llm_integration, prompt_sensitivity, noise_robustness, biased_noise]
+  repetitions: 25                     # artigo
+  scenarios: [free_fall, harmonic_motion, damped_wave]
+  algorithms: [deap, gplearn, pysr]
+  models: []                          # vazio = todos
+output_dir: results/extended
