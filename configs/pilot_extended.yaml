@@ -55,12 +55,12 @@ sr:
     init_max_depth: 3                 # [hipótese]
   gplearn:
     parsimony_coefficient: 0.001      # [hipótese]
-    tournament_size: 20               # [hipótese] default gplearn 0.4.2 (artigo não informa)
+    tournament_size: 3                # [hipótese H-02] uniforme com DEAP (artigo não informa)
     p_crossover: 0.9                  # [hipótese] default gplearn 0.4.2
     p_subtree_mutation: 0.01          # [hipótese] default gplearn 0.4.2
     p_hoist_mutation: 0.01            # [hipótese] default gplearn 0.4.2
     p_point_mutation: 0.01            # [hipótese] default gplearn 0.4.2
-    init_depth: [2, 6]                # [hipótese] default gplearn 0.4.2
+    init_depth: [1, 8]                # [hipótese H-02]
     const_range: [-1.0, 1.0]          # [hipótese H-03] default gplearn 0.4.2
   pysr:
     loss: huber                       # GAP-05: Huber no termo e, conforme artigo
@@ -72,8 +72,7 @@ sr:
     population_size: 50
     ncycles_per_iteration: 50
     maxsize: 30                       # [hipótese] default PySR 2.x
-    parsimony: 0.0
-    timeout_in_seconds: 3600          # teto nativo do PySR por treino
+    tournament_selection_n: 15        # [hipótese] default PySR 2.x
   operators:
     deap: [add, sub, mul, div, neg, exp, log, sin, cos]          # GAP-06 (div protegido)
     gplearn: [add, sub, mul, div, neg, exp, log, sin, cos]       # GAP-06

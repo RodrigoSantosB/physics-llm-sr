@@ -202,17 +202,17 @@ class DeapConfig(_Strict):
 class GplearnConfig(_Strict):
     """Hiperparâmetros gplearn (artigo só informa população e gerações).
 
-    Defaults = gplearn 0.4.2, todos [hipótese] (decisão da onda 5; difere de H-02, que
-    sugeria torneio 3 e profundidade (1, 8)).
+    H-02 [hipótese]: torneio 3 e profundidade inicial (1, 8), uniformes com o DEAP; demais
+    valores = defaults do gplearn 0.4.2; ``const_range`` = H-03. Lidos pelo adaptador.
     """
 
     parsimony_coefficient: Annotated[float, Field(ge=0)] = 0.001  # [hipótese]
-    tournament_size: PositiveInt = 20  # [hipótese] default gplearn 0.4.2
+    tournament_size: PositiveInt = 3  # [hipótese H-02] (default gplearn 0.4.2 = 20)
     p_crossover: Probability = 0.9  # [hipótese] default gplearn 0.4.2
     p_subtree_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
     p_hoist_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
     p_point_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
-    init_depth: tuple[PositiveInt, PositiveInt] = (2, 6)  # [hipótese] default gplearn 0.4.2
+    init_depth: tuple[PositiveInt, PositiveInt] = (1, 8)  # [hipótese H-02] (gplearn: (2, 6))
     const_range: tuple[float, float] = (-1.0, 1.0)  # [hipótese] H-03 = default gplearn 0.4.2
 
     @model_validator(mode="after")
@@ -240,8 +240,8 @@ class PysrConfig(_Strict):
     population_size: PositiveInt | None = None  # None = sr.population [hipótese H-02]
     ncycles_per_iteration: PositiveInt = 380  # [hipótese] default PySR 2.x
     maxsize: PositiveInt = 30  # [hipótese] default PySR 2.x
-    parsimony: Annotated[float, Field(ge=0)] = 0.0  # [hipótese] default PySR 2.x
-    timeout_in_seconds: PositiveFloat | None = None  # limite nativo do PySR (opcional)
+    #: Torneio do PySR 2.x; o adaptador recorta em ``population_size - 1`` se preciso.
+    tournament_selection_n: PositiveInt = 15  # [hipótese] default PySR 2.x
 
 
 def _default_operators() -> dict[AlgorithmName, list[OperatorName]]:

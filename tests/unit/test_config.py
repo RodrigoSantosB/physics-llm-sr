@@ -293,21 +293,21 @@ def test_pilot_and_extended_may_use_ollama() -> None:
     parse_config(data)
 
 
-GPLEARN_042_DEFAULTS = {
-    "tournament_size": 20,
+GPLEARN_H02 = {
+    "tournament_size": 3,
     "p_crossover": 0.9,
     "p_subtree_mutation": 0.01,
     "p_hoist_mutation": 0.01,
     "p_point_mutation": 0.01,
-    "init_depth": (2, 6),
+    "init_depth": (1, 8),
     "const_range": (-1.0, 1.0),
 }
 
 
 @pytest.mark.parametrize("name", ALL_CONFIGS)
-def test_gplearn_fields_default_to_gplearn_042(name: str) -> None:
+def test_gplearn_fields_follow_h02(name: str) -> None:
     cfg = load_config(CONFIGS_DIR / f"{name}.yaml")
-    for field, value in GPLEARN_042_DEFAULTS.items():
+    for field, value in GPLEARN_H02.items():
         assert getattr(cfg.sr.gplearn, field) == value, field
 
 

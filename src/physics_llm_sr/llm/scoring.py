@@ -26,7 +26,16 @@ from typing import Any, Literal
 
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
-from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash, model_identity
+from physics_llm_sr.llm.cache import (
+    DEFAULT_CACHE_KEY_MODE,
+    DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+    EvaluationCache,
+    cache_key,
+    context_hash,
+    expression_key,
+    model_identity,
+    validate_key_options,
+)
 from physics_llm_sr.llm.interfaces import (
     BackendError,
     EquationEvaluation,
@@ -93,6 +102,8 @@ class LLMEquationEvaluator:
         max_retries: int = DEFAULT_MAX_RETRIES,
         failure_policy: str = "retry",
         clock: Callable[[], float] = time.perf_counter,
+        significant_digits: int = DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+        key_mode: str = DEFAULT_CACHE_KEY_MODE,
     ) -> None:
         """Configura o avaliador.
 
@@ -104,7 +115,11 @@ class LLMEquationEvaluator:
             max_retries: novas tentativas por expressão com resposta inválida (``>= 0``).
             failure_policy: ``"retry"`` ou ``"abort"``.
             clock: relógio para medir o tempo de inferência.
+            significant_digits: algarismos das constantes na chave de deduplicação e de
+                cache (``llm.cache_significant_digits``; GAP-14).
+            key_mode: ``exact`` ou ``structure`` (``llm.cache_key_mode``; só extended).
         """
+        validate_key_options(significant_digits, key_mode)
         if max_retries < 0:
             raise ValueError("max_retries deve ser >= 0")
         if failure_policy not in FAILURE_POLICIES:
@@ -115,6 +130,8 @@ class LLMEquationEvaluator:
         self.max_retries = max_retries
         self.failure_policy = failure_policy
         self._clock = clock
+        self.significant_digits = significant_digits
+        self.key_mode = key_mode
         self.metrics = EvaluatorMetrics()
 
     @classmethod
@@ -136,6 +153,8 @@ class LLMEquationEvaluator:
             cache=cache if cache is not None else EvaluationCache.from_config(llm_config),
             max_retries=llm_config.max_retries,
             failure_policy=llm_config.failure_policy,
+            significant_digits=llm_config.cache_significant_digits,
+            key_mode=llm_config.cache_key_mode,
         )
 
     @property
@@ -176,12 +195,20 @@ class LLMEquationEvaluator:
         results: dict[str, EquationEvaluation] = {}
         pending: dict[str, _Item] = {}
         for expr in expressions:
-            key = canonical_key(expr)
+            key = expression_key(expr, self.significant_digits, self.key_mode)
             order.append(key)
             if key in results or key in pending:
                 self.metrics.deduplicated += 1
                 continue
-            ckey = cache_key(expr, identity, prompt_variant, prompt_hash, ctx_digest)
+            ckey = cache_key(
+                expr,
+                identity,
+                prompt_variant,
+                prompt_hash,
+                ctx_digest,
+                significant_digits=self.significant_digits,
+                key_mode=self.key_mode,
+            )
             cached = self.cache.get(ckey) if self.cache is not None else None
             if cached is not None:
                 self.metrics.cache_hits += 1

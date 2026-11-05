@@ -73,9 +73,12 @@ def _selected(
     )
     objective = CombinedObjective(weights, fake, ctx, train.feature_names)
     est = build_estimator(cfg, train.feature_names, DEFAULT_PROTECTION, SEED)
-    # Só reprodução: o offspring é cópia do vencedor do torneio nativo.
+    # Só reprodução: o offspring é cópia do vencedor do torneio nativo. Torneio = população
+    # inteira (independe de sr.gplearn.tournament_size, H-02 = 3): o vencedor é sempre o de
+    # menor L, isolando o mecanismo de seleção.
     est.set_params(
         population_size=len(CONTROLLED) * COPIES,
+        tournament_size=len(CONTROLLED) * COPIES,
         p_crossover=0.0,
         p_subtree_mutation=0.0,
         p_hoist_mutation=0.0,
