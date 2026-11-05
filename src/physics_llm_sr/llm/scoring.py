@@ -21,10 +21,11 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from physics_llm_sr.core_types import PhysicalContext
+from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash
 from physics_llm_sr.llm.interfaces import (
     BackendError,
     EquationEvaluation,
@@ -34,7 +35,7 @@ from physics_llm_sr.llm.interfaces import (
 from physics_llm_sr.llm.prompting import PromptLibrary, RenderedPrompt
 from physics_llm_sr.llm.response_parser import InvalidResponseError, parse_evaluation
 from physics_llm_sr.symbolic.canonicalization import canonical_key
-from physics_llm_sr.symbolic.expression import Expr
+from physics_llm_sr.symbolic.expression import Expr, to_infix
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,14 @@ class EvaluatorMetrics:
         return asdict(self)
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Item:
     key: str
+    cache_key: str
     expression: Expr
     prompt: RenderedPrompt
+    errors: list[str] = field(default_factory=list)
+    raw_responses: list[str] = field(default_factory=list)
 
 
 class LLMEquationEvaluator:
@@ -84,7 +88,7 @@ class LLMEquationEvaluator:
         self,
         backend: TextGenerationBackend,
         prompt_library: PromptLibrary,
-        cache: Any = None,
+        cache: EvaluationCache | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         failure_policy: str = "retry",
         clock: Callable[[], float] = time.perf_counter,
@@ -92,9 +96,10 @@ class LLMEquationEvaluator:
         """Configura o avaliador.
 
         Args:
-            backend: mecanismo de inferência.
+            backend: mecanismo de inferência; ``model_metadata()`` fornece ``checkpoint`` e
+                ``revision`` usados na chave do cache.
             prompt_library: templates e variantes A-H.
-            cache: ``EvaluationCache`` opcional.
+            cache: :class:`EvaluationCache` opcional (memória/JSONL).
             max_retries: novas tentativas por expressão com resposta inválida (``>= 0``).
             failure_policy: ``"retry"`` ou ``"abort"``.
             clock: relógio para medir o tempo de inferência.
@@ -130,42 +135,87 @@ class LLMEquationEvaluator:
     ) -> list[EquationEvaluation]:
         """Avalia um lote, deduplicando por forma canônica; ordem preservada.
 
+        Expressões já em cache não chegam ao backend; as demais vão em um único lote por
+        tentativa.
+
         Raises:
             EvaluationFailedError: alguma expressão sem resposta válida após a política.
             BackendError: falha do backend (não reexecutada).
         """
         self.metrics.requested += len(expressions)
+        meta = self.backend.model_metadata()
+        model_id = str(meta.get("checkpoint"))
+        revision = meta.get("revision")
+        ctx_digest = context_hash(physical_context)
+        prompt_hash = self.prompt_library.prompt_hash(prompt_variant)
         order: list[str] = []
-        unique: dict[str, _Item] = {}
+        results: dict[str, EquationEvaluation] = {}
+        pending: dict[str, _Item] = {}
         for expr in expressions:
             key = canonical_key(expr)
             order.append(key)
-            if key in unique:
+            if key in results or key in pending:
                 self.metrics.deduplicated += 1
                 continue
+            ckey = cache_key(expr, model_id, revision, prompt_variant, prompt_hash, ctx_digest)
+            cached = self.cache.get(ckey) if self.cache is not None else None
+            if cached is not None:
+                self.metrics.cache_hits += 1
+                results[key] = cached
+                continue
+            if self.cache is not None:
+                self.metrics.cache_misses += 1
             prompt = self.prompt_library.render(expr, physical_context, prompt_variant)
-            unique[key] = _Item(key, expr, prompt)
-        results: dict[str, EquationEvaluation] = {}
-        pending = list(unique.values())
-        errors: dict[str, list[str]] = {}
+            pending[key] = _Item(key, ckey, expr, prompt)
+        n_unique = len(results) + len(pending)
+        remaining = list(pending.values())
         attempts = 0
-        while pending and attempts < self.max_attempts:
+        while remaining and attempts < self.max_attempts:
             attempts += 1
-            pending = self._attempt(pending, results, errors)
-        if pending:
-            self.metrics.failures += len(pending)
-            detail = "; ".join(f"{item.key}: {errors[item.key][-1]}" for item in pending)
+            remaining = self._attempt(remaining, results, meta, physical_context)
+        if remaining:
+            self.metrics.failures += len(remaining)
+            for item in remaining:
+                if self.cache is not None:
+                    self.cache.record_error(
+                        item.cache_key,
+                        item.errors[-1],
+                        raw_responses=item.raw_responses,
+                        metadata=self._metadata(item, meta, physical_context, attempts),
+                    )
+            detail = "; ".join(f"{item.key}: {item.errors[-1]}" for item in remaining)
             raise EvaluationFailedError(
-                f"avaliação LLM falhou para {len(pending)} de {len(unique)} expressões únicas "
+                f"avaliação LLM falhou para {len(remaining)} de {n_unique} expressões únicas "
                 f"após {attempts} tentativa(s) (política {self.failure_policy}): {detail}"
             )
         return [results[key] for key in order]
+
+    @staticmethod
+    def _metadata(
+        item: _Item, meta: dict[str, Any], ctx: PhysicalContext, attempts: int
+    ) -> dict[str, Any]:
+        return {
+            "expression": to_infix(item.expression),
+            "canonical_key": item.key,
+            "backend": meta.get("backend"),
+            "model_id": meta.get("checkpoint"),
+            "model_revision": meta.get("revision"),
+            "quantization": meta.get("quantization"),
+            "infra": meta.get("infra"),
+            "prompt_variant": item.prompt.variant,
+            "prompt_hash": item.prompt.prompt_hash,
+            "gt_disclosed": item.prompt.gt_disclosed,
+            "scenario": ctx.scenario,
+            "context_hash": context_hash(ctx),
+            "attempts": attempts,
+        }
 
     def _attempt(
         self,
         pending: list[_Item],
         results: dict[str, EquationEvaluation],
-        errors: dict[str, list[str]],
+        meta: dict[str, Any],
+        ctx: PhysicalContext,
     ) -> list[_Item]:
         prompts = [(item.prompt.system, item.prompt.user) for item in pending]
         start = self._clock()
@@ -180,14 +230,24 @@ class LLMEquationEvaluator:
         still: list[_Item] = []
         for item, response in zip(pending, responses, strict=True):
             logger.debug("resposta LLM [%s]: %r", item.key, response)
+            item.raw_responses.append(response)
             try:
-                results[item.key] = parse_evaluation(response)
+                evaluation = parse_evaluation(response)
             except InvalidResponseError as exc:
                 self.metrics.invalid_responses += 1
                 message = f"{type(exc).__name__}: {exc}"
-                errors.setdefault(item.key, []).append(message)
+                item.errors.append(message)
                 logger.warning("resposta LLM inválida [%s]: %s", item.key, message)
                 still.append(item)
+                continue
+            results[item.key] = evaluation
+            if self.cache is not None:
+                self.cache.put(
+                    item.cache_key,
+                    evaluation,
+                    raw_response=response,
+                    metadata=self._metadata(item, meta, ctx, len(item.raw_responses)),
+                )
         return still
 
 
