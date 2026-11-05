@@ -42,6 +42,9 @@ REFERENCES_DIR_ENV = "PHYSICS_LLM_SR_REFERENCES_DIR"
 REPO_DIR_ENV = "PHYSICS_LLM_SR_REPO_DIR"
 HF_TOKEN_ENV = "HF_TOKEN"
 HF_SECRET_NAME = "HF_TOKEN"
+HF_HOME_ENV = "HF_HOME"
+HF_HOME_SUBDIR = "hf_home"
+PYPROJECT = "pyproject.toml"
 COLAB_MODULE = "google.colab"
 DEFAULT_COLAB_REPO_DIR = "/content/physics-llm-sr"
 DEFAULT_DRIVE_MOUNT = "/content/drive"
@@ -98,6 +101,12 @@ class EnvironmentPlan:
     repo_dir: Path
     actions: list[SetupAction] = field(default_factory=list)
     executed: bool = False
+    #: Problemas já conhecidos no plano que impedem a execução (repositório ausente).
+    blocking_errors: list[str] = field(default_factory=list)
+
+
+class RepoNotFoundError(FileNotFoundError):
+    """O repositório do projeto não existe no caminho esperado (erro bloqueante do Colab)."""
 
 
 def detect_colab() -> bool:
@@ -119,28 +128,48 @@ def find_repo_root(start: Path | None = None) -> Path:
     raise FileNotFoundError(f"raiz do repositório não encontrada a partir de {here}")
 
 
+def _repo_missing_message(repo: Path) -> str:
+    return (
+        f"repositório não encontrado em {repo} (falta pyproject.toml). Coloque o código do projeto "
+        "no Drive (pasta inteira com .git, ou `git bundle` + `git clone`; veja o README) e ajuste "
+        "REPO_DIR, ou preencha REPO_URL para clonar, e confira MOUNT_DRIVE = True se o "
+        "repositório está no Drive."
+    )
+
+
 def _plan_colab(
-    plan: EnvironmentPlan, repo_url: str, mount_drive: bool, drive_dir: str, extras: str
-) -> str:
-    """Acrescenta as ações do Colab e devolve a raiz de projeto escolhida."""
+    plan: EnvironmentPlan,
+    repo_url: str,
+    mount_drive: bool,
+    drive_dir: str,
+    extras: str,
+    hf_home: str,
+) -> tuple[str, str | None]:
+    """Acrescenta as ações do Colab (drive, clone, check_repo, pip) e devolve (raiz, HF_HOME).
+
+    A ordem importa: o repositório pode estar no Drive, então a verificação vem depois da
+    montagem; sem repositório o plano termina em erro bloqueante antes do pip.
+    """
     repo = plan.repo_dir
-    if not repo.is_dir():
-        if repo_url:
-            plan.actions.append(
-                SetupAction(
-                    "clone",
-                    f"clonar {repo_url} em {repo}",
-                    ("git", "clone", repo_url, str(repo)),
-                )
+    root = DEFAULT_COLAB_WORK_DIR
+    if mount_drive:
+        root = drive_dir
+        plan.actions.append(
+            SetupAction("drive", f"montar o Google Drive em {DEFAULT_DRIVE_MOUNT}", name="mount")
+        )
+    if repo_url:
+        plan.actions.append(
+            SetupAction(
+                "clone",
+                f"clonar {repo_url} em {repo} (pulado se a pasta já existir)",
+                ("git", "clone", repo_url, str(repo)),
             )
-        else:
-            plan.actions.append(
-                SetupAction(
-                    "repo_missing",
-                    f"{repo} não existe e REPO_URL está vazio: suba o repositório ao Drive "
-                    "(ou ao /content) e ajuste REPO_DIR",
-                )
-            )
+        )
+    plan.actions.append(
+        SetupAction("check_repo", f"verificar que {repo} contém o repositório (bloqueante)")
+    )
+    if not mount_drive and not repo_url and not (repo / PYPROJECT).is_file():
+        plan.blocking_errors.append(_repo_missing_message(repo))
     spec = f"{repo}[{extras}]" if extras else str(repo)
     plan.actions.append(
         SetupAction(
@@ -149,12 +178,6 @@ def _plan_colab(
             (sys.executable, "-m", "pip", "install", "-q", "-e", spec),
         )
     )
-    root = DEFAULT_COLAB_WORK_DIR
-    if mount_drive:
-        root = drive_dir
-        plan.actions.append(
-            SetupAction("drive", f"montar o Google Drive em {DEFAULT_DRIVE_MOUNT}", name="mount")
-        )
     plan.actions.append(
         SetupAction(
             "warning",
@@ -169,7 +192,8 @@ def _plan_colab(
             "PySR: a primeira importação instala o Julia e as dependências (vários minutos).",
         )
     )
-    return root
+    hf = hf_home or (f"{drive_dir}/{HF_HOME_SUBDIR}" if mount_drive else None)
+    return root, hf
 
 
 def setup_environment(
@@ -181,13 +205,16 @@ def setup_environment(
     in_colab: bool | None = None,
     dry_run: bool = False,
     extras: str = DEFAULT_EXTRAS,
+    hf_home: str = "",
     environ: MutableMapping[str, str] | None = None,
 ) -> EnvironmentPlan:
     """Prepara o ambiente (ou, com ``dry_run=True``, só devolve o plano).
 
-    No Colab: clona (se ``repo_url``), ``pip install -e <repo>[hf]``, monta o Drive
-    (opcional) e define ``PHYSICS_LLM_SR_PROJECT_ROOT`` (Drive: resultados e cache
-    persistem), ``PHYSICS_LLM_SR_PROMPTS_DIR`` e ``PHYSICS_LLM_SR_REFERENCES_DIR``.
+    No Colab, na ordem: monta o Drive (opcional), clona (se ``repo_url``), verifica o
+    repositório (ausente: :class:`RepoNotFoundError`), ``pip install -e <repo>[hf]`` e define
+    ``HF_HOME`` (``hf_home``, ou ``<drive_dir>/hf_home`` com Drive: os pesos dos modelos não
+    são rebaixados a cada sessão), além de ``PHYSICS_LLM_SR_PROJECT_ROOT`` (Drive: resultados e
+    cache persistem), ``PHYSICS_LLM_SR_PROMPTS_DIR`` e ``PHYSICS_LLM_SR_REFERENCES_DIR``.
     Localmente: só as variáveis de ambiente (a raiz do projeto = raiz do repositório).
     Variáveis já definidas pelo usuário são respeitadas.
     """
@@ -199,14 +226,17 @@ def setup_environment(
         repo = Path(DEFAULT_COLAB_REPO_DIR) if colab else find_repo_root()
     plan = EnvironmentPlan(in_colab=colab, repo_dir=repo)
     root = str(repo)
+    hf: str | None = None
     if colab:
-        root = _plan_colab(plan, repo_url, mount_drive, drive_dir, extras)
+        root, hf = _plan_colab(plan, repo_url, mount_drive, drive_dir, extras, hf_home)
     wanted = {
         PROJECT_ROOT_ENV: root,
         REPO_DIR_ENV: str(repo),
         PROMPTS_DIR_ENV: str(repo / "prompts"),
         REFERENCES_DIR_ENV: str(repo / "references"),
     }
+    if hf is not None:
+        wanted[HF_HOME_ENV] = hf
     for name, value in wanted.items():
         if name in env:
             plan.actions.append(
@@ -217,6 +247,8 @@ def setup_environment(
                 SetupAction("env", f"definir {name}", name=name, value=value),
             )
     if not dry_run:
+        if plan.blocking_errors:
+            raise RepoNotFoundError(plan.blocking_errors[0])
         _execute(plan, env)
         plan.executed = True
     return plan
@@ -224,7 +256,13 @@ def setup_environment(
 
 def _execute(plan: EnvironmentPlan, env: MutableMapping[str, str]) -> None:
     for action in plan.actions:
-        if action.kind in {"clone", "pip"} and action.command:
+        if action.kind == "clone" and action.command:
+            if not plan.repo_dir.is_dir():
+                subprocess.run(action.command, check=True)
+        elif action.kind == "check_repo":
+            if not (plan.repo_dir / PYPROJECT).is_file():
+                raise RepoNotFoundError(_repo_missing_message(plan.repo_dir))
+        elif action.kind == "pip" and action.command:
             subprocess.run(action.command, check=True)
         elif action.kind == "drive":
             from google.colab import drive  # type: ignore[import-not-found,unused-ignore]
@@ -232,7 +270,7 @@ def _execute(plan: EnvironmentPlan, env: MutableMapping[str, str]) -> None:
             drive.mount(DEFAULT_DRIVE_MOUNT)
         elif action.kind == "env" and action.name and action.value is not None:
             env[action.name] = action.value
-            if action.name == PROJECT_ROOT_ENV:
+            if action.name in {PROJECT_ROOT_ENV, HF_HOME_ENV}:
                 Path(action.value).mkdir(parents=True, exist_ok=True)
 
 

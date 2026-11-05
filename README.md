@@ -57,17 +57,27 @@ O backend de piloto local usa [Ollama](https://ollama.com) com `mistral:7b-instr
 
 O repositório ainda não tem remoto. Passo a passo:
 
-1. **Subir o repositório ao Google Drive**: compacte a pasta do projeto (sem `.venv`, `results/` e `.cache/`) e envie
-   para `MyDrive/physics-llm-sr`. Quando houver um remoto, basta preencher `REPO_URL` no notebook (clonagem automática).
+1. **Levar o código ao Drive com o `.git`** (sem `.venv`, `results/` e `.cache/`). Duas formas; **recomendada: bundle**.
+   - *Bundle (recomendado):* na máquina local, `git bundle create physics-llm-sr.bundle --all` e envie o arquivo ao Drive
+     (por exemplo `MyDrive/physics-llm-sr.bundle`). No notebook, `REPO_URL = "/content/drive/MyDrive/physics-llm-sr.bundle"`
+     e `REPO_DIR = "/content/drive/MyDrive/physics-llm-sr"`: a primeira célula faz o `git clone` (se a pasta ainda não existe).
+   - *Pasta inteira:* envie a pasta do projeto **incluindo `.git`** para `MyDrive/physics-llm-sr` e use `REPO_DIR` com esse caminho.
+   - Não envie um zip sem extraí-lo: o notebook precisa da pasta pronta. Sem `.git` o código roda, mas o `manifest.json` grava
+     `git_sha = unknown` e a retomada não consegue comparar o código entre sessões.
+   - No Colab, o Drive não preserva permissões: rode `git -C /content/drive/MyDrive/physics-llm-sr config core.fileMode false`
+     para o repositório não aparecer como modificado (`git_dirty`) só por causa de modos de arquivo.
 2. **Abrir o notebook** `notebooks/01_full_paper_reproduction.ipynb` no Colab (Drive, "Abrir com", Google Colaboratory).
 3. **Escolher a GPU A100**: *Ambiente de execução, Alterar tipo de ambiente de execução, A100* (com High-RAM).
 4. **Configurar o Llama 2**: o checkpoint `meta-llama/Llama-2-7b-chat-hf` é restrito. Aceite a licença no Hugging Face e crie o segredo
    `HF_TOKEN` no Colab (ícone de chave, "Acesso ao notebook" ligado). O notebook faz o login sem imprimir o token.
 5. **Ajustar os parâmetros** da primeira célula: `RUN_PROFILE = "colab_pilot"` (ou `"replication"`), `ARM`, `MOUNT_DRIVE = True`
-   (resultados e cache persistem em `DRIVE_PROJECT_DIR`) e `REPO_DIR` (pasta no Drive, por exemplo
-   `/content/drive/MyDrive/physics-llm-sr`).
-6. **Executar tudo**. A etapa 01 instala o pacote (`pip install -e <repo>[hf]`), monta o Drive e define
-   `PHYSICS_LLM_SR_PROJECT_ROOT`. A primeira importação do PySR instala o Julia (minutos).
+   (resultados e cache persistem em `DRIVE_PROJECT_DIR`), `REPO_DIR` e, se usar o bundle, `REPO_URL`.
+6. **Executar tudo.** A primeira célula é autossuficiente (não importa o pacote) e segue esta ordem: monta o Drive, clona
+   `REPO_URL` (se a pasta não existe), verifica `REPO_DIR` (se faltar, para com uma mensagem dizendo o que fazer), roda
+   `pip install -e <repo>[hf]` e ajusta `sys.path`; só depois a etapa 01 importa `physics_llm_sr.colab`. A primeira importação do PySR instala o Julia (minutos).
+7. **Pesos dos modelos no Drive (`HF_HOME_DIR`):** por padrão, com `MOUNT_DRIVE = True`, o cache do Hugging Face vai para
+   `<DRIVE_PROJECT_DIR>/hf_home`, para não rebaixar os três modelos em cada sessão. Reserve **cerca de 40 GB** livres no Drive
+   (Mistral 7B, Llama 2 7B e Falcon 7B em fp16, mais cache). Sem Drive, os pesos ficam no disco temporário do Colab e são baixados a cada sessão.
 
 Sem Colab, a CLI faz o mesmo: `make pilot-colab` (veja abaixo) com `PHYSICS_LLM_SR_PROJECT_ROOT` apontando para o Drive.
 
@@ -163,3 +173,13 @@ diretório (`<output_dir>/notebook_run`) e mostra os resultados já calculados.
 Cada execução grava `run.json` (config e hash), `manifest.json` (SHA do git, versões de bibliotecas, Julia, hardware, backends dos LLMs),
 `results.parquet`, `history.parquet`, relatórios CSV e `figures/`. As sementes são derivadas por nome a partir de uma semente mestra. O determinismo entre
 ambientes não é presumido (INC-11); a saída do LLM é validada por parser estrito e nunca substituída por nota padrão.
+
+## Roteiro Colab A100
+
+1. **Runtime:** *Ambiente de execução, Alterar tipo*, GPU **A100** com **High-RAM**.
+2. **Segredo:** crie `HF_TOKEN` em *Segredos* (com "Acesso ao notebook" ligado), depois de aceitar a licença do Llama 2 no Hugging Face.
+3. **Parâmetros** da primeira célula: `RUN_PROFILE = "colab_pilot"`, `MOUNT_DRIVE = True`, `REPO_DIR` (e `REPO_URL` se usar o bundle); confira cerca de 40 GB livres para `HF_HOME_DIR`.
+4. **Executar** as etapas em ordem. Estimativas do `colab_pilot` (a medir, não garantidas): cerca de 45 min com lote e cerca de 5 h sem lote, mais o PySR (0,5 a 3 h por treino com LLM).
+5. **Resultados:** `<DRIVE_PROJECT_DIR>/results/colab_pilot/notebook_run/` (`results.parquet`, `manifest.json`, `figures/`); cache do LLM em `<DRIVE_PROJECT_DIR>/.cache/llm`.
+6. **Retomar após desconexão:** abra o notebook, repita os parâmetros e reexecute a primeira célula e as etapas; as células concluídas são puladas.
+7. **Baixar:** pelo Drive, ou compacte `notebook_run/` (`shutil.make_archive`) e baixe com `google.colab.files.download`.

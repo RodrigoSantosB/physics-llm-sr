@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -51,16 +52,93 @@ def test_dry_run_without_drive_has_no_drive_action(monkeypatch: pytest.MonkeyPat
     assert "pip" in _kinds(plan)
 
 
+def _ordered(plan: colab.EnvironmentPlan) -> list[str]:
+    """Tipos das ações sem avisos e sem a repetição de ``env``."""
+    out: list[str] = []
+    for kind in _kinds(plan):
+        if kind in {"warning", "env_kept"}:
+            continue
+        if not out or out[-1] != kind:
+            out.append(kind)
+    return out
+
+
+def test_dry_run_colab_order_is_drive_clone_check_pip_env() -> None:
+    plan = colab.setup_environment(
+        repo_dir="/content/drive/MyDrive/physics-llm-sr",
+        repo_url="https://example.invalid/repo.git",
+        mount_drive=True,
+        in_colab=True,
+        dry_run=True,
+    )
+    assert _ordered(plan) == ["drive", "clone", "check_repo", "pip", "env"]
+
+
+def test_dry_run_colab_order_without_drive_or_url() -> None:
+    plan = colab.setup_environment(repo_dir=REPO, in_colab=True, dry_run=True)
+    assert _ordered(plan) == ["check_repo", "pip", "env"]
+    assert plan.blocking_errors == []  # o repositório existe
+
+
 def test_dry_run_clone_only_when_url_given() -> None:
     no_url = colab.setup_environment(repo_dir=REPO / "nao-existe", in_colab=True, dry_run=True)
     assert "clone" not in _kinds(no_url)
-    assert "repo_missing" in [a.kind for a in no_url.actions]  # avisa em vez de clonar
+    assert "repo_missing" not in _kinds(no_url)  # não é mais um aviso: é erro bloqueante
     url = "https://example.invalid/repo.git"
     with_url = colab.setup_environment(
         repo_dir=REPO / "nao-existe", repo_url=url, in_colab=True, dry_run=True
     )
     clone = next(a for a in with_url.actions if a.kind == "clone")
     assert clone.command is not None and url in clone.command
+    assert with_url.blocking_errors == []  # o clone vai criar o diretório
+
+
+def test_missing_repo_is_blocking_with_actionable_message() -> None:
+    plan = colab.setup_environment(repo_dir=REPO / "nao-existe", in_colab=True, dry_run=True)
+    assert len(plan.blocking_errors) == 1
+    msg = plan.blocking_errors[0]
+    assert str(REPO / "nao-existe") in msg and "REPO_URL" in msg and "Drive" in msg
+    with pytest.raises(colab.RepoNotFoundError, match="REPO_URL"):
+        colab.setup_environment(repo_dir=REPO / "nao-existe", in_colab=True, dry_run=False)
+
+
+def test_missing_repo_is_checked_after_drive_mount_not_before() -> None:
+    """Com o Drive a montar, o plano não declara o repositório ausente (ainda não dá para saber)."""
+    plan = colab.setup_environment(
+        repo_dir="/content/drive/MyDrive/nao-existe", mount_drive=True, in_colab=True, dry_run=True
+    )
+    assert plan.blocking_errors == []
+    assert _ordered(plan)[:2] == ["drive", "check_repo"]
+
+
+def test_execute_stops_before_pip_when_repo_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> None:
+        calls.append(tuple(cmd))
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(colab.RepoNotFoundError):
+        colab.setup_environment(
+            repo_dir=tmp_path / "vazio", in_colab=True, dry_run=False, environ={}
+        )
+    assert calls == []  # nenhum pip em caminho inexistente
+
+
+def test_hf_home_defaults_into_drive_project_when_mounted() -> None:
+    plan = colab.setup_environment(
+        repo_dir=REPO, mount_drive=True, drive_dir="/d/proj", in_colab=True, dry_run=True
+    )
+    hf = next(a for a in plan.actions if a.kind == "env" and a.name == "HF_HOME")
+    assert hf.value == "/d/proj/hf_home"
+    custom = colab.setup_environment(
+        repo_dir=REPO, mount_drive=True, hf_home="/x/hf", in_colab=True, dry_run=True
+    )
+    assert next(a.value for a in custom.actions if a.name == "HF_HOME") == "/x/hf"
+    plain = colab.setup_environment(repo_dir=REPO, in_colab=True, dry_run=True)
+    assert all(a.name != "HF_HOME" for a in plain.actions)
 
 
 def test_dry_run_local_does_not_pip_install(monkeypatch: pytest.MonkeyPatch) -> None:
