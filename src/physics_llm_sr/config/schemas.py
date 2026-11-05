@@ -200,9 +200,32 @@ class DeapConfig(_Strict):
 
 
 class GplearnConfig(_Strict):
-    """Hiperparâmetros gplearn."""
+    """Hiperparâmetros gplearn (artigo só informa população e gerações).
+
+    H-02 [hipótese]: torneio 3 e profundidade inicial (1, 8), uniformes com o DEAP; demais
+    valores = defaults do gplearn 0.4.2; ``const_range`` = H-03. Lidos pelo adaptador.
+    """
 
     parsimony_coefficient: Annotated[float, Field(ge=0)] = 0.001  # [hipótese]
+    tournament_size: PositiveInt = 3  # [hipótese H-02] (default gplearn 0.4.2 = 20)
+    p_crossover: Probability = 0.9  # [hipótese] default gplearn 0.4.2
+    p_subtree_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
+    p_hoist_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
+    p_point_mutation: Probability = 0.01  # [hipótese] default gplearn 0.4.2
+    init_depth: tuple[PositiveInt, PositiveInt] = (1, 8)  # [hipótese H-02] (gplearn: (2, 6))
+    const_range: tuple[float, float] = (-1.0, 1.0)  # [hipótese] H-03 = default gplearn 0.4.2
+
+    @model_validator(mode="after")
+    def _consistent(self) -> GplearnConfig:
+        total = self.p_crossover + self.p_subtree_mutation + self.p_hoist_mutation
+        total += self.p_point_mutation
+        if total > 1.0 + WEIGHT_SUM_TOLERANCE:
+            raise ValueError(f"soma das probabilidades genéticas = {total}; deve ser <= 1")
+        if self.init_depth[0] > self.init_depth[1]:
+            raise ValueError("init_depth deve ser (min, max) com min <= max")
+        if self.const_range[0] > self.const_range[1]:
+            raise ValueError("const_range deve ser (low, high) com low <= high")
+        return self
 
 
 class PysrConfig(_Strict):
@@ -210,6 +233,15 @@ class PysrConfig(_Strict):
 
     loss: Literal["huber", "mse"] = "huber"
     huber_delta: PositiveFloat = 1.0  # [hipótese GAP-05]
+    #: H-02: uma população de ``sr.population`` indivíduos; ``niterations = None`` usa
+    #: ``sr.generations`` (artigo: 50). Pilotos locais reduzem (validação, não reprodução).
+    niterations: PositiveInt | None = None  # [hipótese H-02]
+    populations: PositiveInt = 1  # [hipótese H-02]
+    population_size: PositiveInt | None = None  # None = sr.population [hipótese H-02]
+    ncycles_per_iteration: PositiveInt = 380  # [hipótese] default PySR 2.x
+    maxsize: PositiveInt = 30  # [hipótese] default PySR 2.x
+    #: Torneio do PySR 2.x; o adaptador recorta em ``population_size - 1`` se preciso.
+    tournament_selection_n: PositiveInt = 15  # [hipótese] default PySR 2.x
 
 
 def _default_operators() -> dict[AlgorithmName, list[OperatorName]]:
@@ -284,6 +316,10 @@ class LLMConfig(_Strict):
     cache_enabled: bool = True
     cache_dir: str = ".cache/llm"  # diretório do cache JSONL de avaliações
     prompts_dir: str | None = None  # None = prompts/ do repositório
+    #: Algarismos significativos das constantes na chave do cache (GAP-14, precisão publicada).
+    cache_significant_digits: Annotated[int, Field(ge=1)] = 3
+    #: ``exact`` = estrutura + constantes arredondadas; ``structure`` (só extended) = desvio.
+    cache_key_mode: Literal["exact", "structure"] = "exact"
     #: Endereço do servidor Ollama (backend ``ollama``).
     ollama_endpoint: str = "http://localhost:11434"
     batch_size: PositiveInt = 1  # lote do backend transformers
@@ -310,6 +346,13 @@ class ExperimentsConfig(_Strict):
     scenarios: list[ScenarioName] = ["free_fall", "harmonic_motion", "damped_wave"]
     algorithms: list[AlgorithmName] = ["deap", "gplearn", "pysr"]
     models: list[str] = Field(default_factory=list)  # vazio = todos os de llm.models
+    #: Prompt do Exp2 (Tabela 5): A, por INC-08/GAP-12 (o artigo não informa).
+    benchmark_prompt: PromptVariant = "A"
+    #: LLM e prompt dos Exp4/Exp5 (Tabelas 3 e 4 não informam): Mistral + E [hipótese GAP-12].
+    noise_model: str = "mistral"
+    noise_prompt: PromptVariant = "E"
+    #: Limite opcional de tempo de parede por célula (s); excedido -> célula ``error``.
+    max_cell_seconds: PositiveFloat | None = None
 
 
 class ExperimentConfig(_Strict):
@@ -350,6 +393,10 @@ class ExperimentConfig(_Strict):
             raise ValueError(
                 "llm.top_k/evaluation_scope='top_k' é desvio; permitido apenas em extended_analysis"
             )
+        if self.track is Track.PAPER_REPLICATION and self.llm.cache_key_mode == "structure":
+            raise ValueError(
+                "llm.cache_key_mode='structure' é desvio; permitido apenas em extended_analysis"
+            )
         if self.track is Track.PAPER_REPLICATION and self.llm.backend == "transformers":
             unpinned = [m.name for m in self.llm.models if not (m.revision or "").strip()]
             if unpinned:
@@ -360,4 +407,10 @@ class ExperimentConfig(_Strict):
         unknown = [m for m in self.experiments.models if m not in declared]
         if unknown:
             raise ValueError(f"experiments.models referencia modelos não declarados: {unknown}")
+        noise_runs = {"noise_robustness", "biased_noise"} & set(self.experiments.run)
+        if noise_runs and self.experiments.noise_model not in declared:
+            raise ValueError(
+                f"experiments.noise_model={self.experiments.noise_model!r} não declarado em "
+                f"llm.models (exigido por {sorted(noise_runs)})"
+            )
         return self

@@ -51,9 +51,9 @@ Desvios e decisões registrados (``metadata.extra``):
   ``fit`` executa exatamente uma geração. A parada é a do projeto (EarlyStopping).
 - A melhor expressão é a de menor ``L`` vista em qualquer geração (registro elitista
   fora da seleção; o gplearn não tem elitismo e isso não altera a busca).
-- Hiperparâmetros sem campo em ``config.sr.gplearn`` (``tournament_size``,
-  ``p_crossover``, ``p_*_mutation``, ``init_depth``, ``const_range``...) usam os
-  defaults da biblioteca e são registrados em ``metadata.extra["gplearn_params"]``.
+- ``tournament_size``, ``p_crossover``, ``p_*_mutation``, ``init_depth`` e
+  ``const_range`` vêm de ``config.sr.gplearn`` (H-02/H-03); os demais usam os defaults
+  da biblioteca. Todos ficam em ``metadata.extra["gplearn_params"]``.
 
 Conversão ``_Program -> AST``: ``program.program`` é uma lista prefixa de
 ``_Function``/``int`` (índice de feature)/``float``; os nomes nativos coincidem com
@@ -214,9 +214,21 @@ def build_estimator(
     protection: ProtectionParams,
     seed: int,
 ) -> _GplearnSymbolicRegressor:
-    """``SymbolicRegressor`` configurado para avançar uma geração por ``fit``."""
+    """``SymbolicRegressor`` configurado para avançar uma geração por ``fit``.
+
+    Operadores genéticos, torneio, inicialização e constantes vêm de ``config.sr.gplearn``
+    (H-02/H-03).
+    """
+    gp = config.sr.gplearn
     return _GplearnSymbolicRegressor(
         population_size=config.sr.population,
+        tournament_size=gp.tournament_size,
+        p_crossover=gp.p_crossover,
+        p_subtree_mutation=gp.p_subtree_mutation,
+        p_hoist_mutation=gp.p_hoist_mutation,
+        p_point_mutation=gp.p_point_mutation,
+        init_depth=tuple(gp.init_depth),
+        const_range=tuple(gp.const_range),
         generations=0,
         function_set=make_function_set(config.sr.operators[ALGORITHM], protection),
         metric=NATIVE_METRIC,
