@@ -6,8 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from physics_llm_sr.config.loader import load_config
 from physics_llm_sr.evaluation.paper_comparison import (
     CLASSES,
+    LLM_ALIASES,
+    ComparisonError,
+    canonical_llm,
     classify_cell,
     compare_with_paper,
     load_paper_results,
@@ -117,7 +121,7 @@ def test_compare_with_paper_table5_cells() -> None:
     assert len(out) == 144  # todas as células publicadas; sem dados locais => inconclusiva
     out = out[out["n"] > 0]
     assert len(out) == 8  # 4 métricas x (baseline, mistral) para free_fall/deap
-    m = _cell(out, "mistral_7b", "tree_distance")
+    m = _cell(out, "mistral", "tree_distance")
     assert m["published"] == 0.03 and m["baseline_published"] == 0.25
     assert m["baseline_local_mean"] == pytest.approx(0.25)
     assert m["classe"] == "qualitativa" and not m["reduced_run"]
@@ -135,3 +139,89 @@ def test_compare_with_paper_pilot_is_labeled() -> None:
 def test_compare_missing_local_is_inconclusive() -> None:
     out = compare_with_paper(_results("full"), paper=load_paper_results(), tables=(2,))
     assert (out["classe"] == "inconclusiva").all()  # Tabela 2 = média de 3 cenários; só há 1
+
+
+def test_llm_aliases_cover_real_config_names() -> None:
+    """Nomes das configs (mistral/llama2/falcon) casam com o CSV (mistral_7b/...)."""
+    cfg = load_config("configs/replication.yaml")
+    paper = load_paper_results()
+    csv_llms = set(paper["llm"]) - {"none", "unspecified"}
+    raw = pd.read_csv("references/paper_results/table5_benchmark_supplement.csv")
+    assert {"mistral_7b", "llama2_7b", "falcon_7b"} <= set(raw["llm"])  # CSV bruto usa sufixo
+    for model in cfg.llm.models:
+        assert model.name in csv_llms
+        assert canonical_llm(f"{model.name}_7b") == model.name
+    assert set(LLM_ALIASES.values()) == {m.name for m in cfg.llm.models}
+
+
+def test_compare_matches_config_llm_names() -> None:
+    res = _results("full")
+    res["llm"] = res["llm"].replace({"mistral_7b": "mistral"})
+    out = compare_with_paper(res, paper=load_paper_results(), tables=(5,))
+    out = out[out["n"] > 0]
+    assert len(out) == 8
+
+
+def test_missing_track_column_is_error() -> None:
+    with pytest.raises(ComparisonError, match="track"):
+        compare_with_paper(_results("full").drop(columns="track"), tables=(5,))
+
+
+def test_extended_track_never_reproduction() -> None:
+    res = _results("full")
+    res["track"] = "extended_analysis"
+    out = compare_with_paper(res, paper=load_paper_results(), tables=(5,))
+    out = out[out["n"] > 0]
+    assert out["reduced_run"].all() and set(out["classe"]) == {"inconclusiva"}
+
+
+def test_published_ref_without_local_ref_is_inconclusive_rule_1c() -> None:
+    res = _results("full")
+    res = res[res["llm"] != "none"]  # sem série local do baseline (referência da Tabela 5)
+    out = compare_with_paper(res, paper=load_paper_results(), tables=(5,))
+    cell = _cell(out[out["n"] > 0], "mistral", "tree_distance")
+    assert cell["classe"] == "inconclusiva"
+    assert "1(c)" in cell["reason"]
+    assert cell["delta_local"] is None or pd.isna(cell["delta_local"])
+
+
+def _noise_results(levels: tuple[float, ...], noise_type: str, mean_by_level: dict[float, float]):  # type: ignore[no-untyped-def]
+    rows = []
+    for lvl in levels:
+        for i, v in enumerate(sample(mean_by_level[lvl], 0.01, N)):
+            rows.append(
+                dict(
+                    scenario="free_fall", sr="deap", llm="mistral", prompt="A",
+                    noise_type=noise_type, noise_location="inputs", noise_level=lvl,
+                    repetition=i, mode="full", track="paper_replication",
+                    mae=v, mse=v, one_minus_r2=v, tree_distance=v,
+                )
+            )  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def test_table4_references_level_1pct_and_table3_cell() -> None:
+    paper = load_paper_results()
+    t4 = paper[(paper["table"] == 4) & (paper["scenario"] == "free_fall") & (paper["sr"] == "deap")]
+    t4 = t4[(t4["noise_location"] == "inputs") & (t4["metric"] == "tree_distance")]
+    pub = {float(r.noise_level): float(r.value) for r in t4.itertuples()}
+    t3 = paper[(paper["table"] == 3) & (paper["scenario"] == "free_fall") & (paper["sr"] == "deap")]
+    t3 = t3[(t3["noise_location"] == "inputs") & (t3["metric"] == "tree_distance")]
+    pub3 = {float(r.noise_level): float(r.value) for r in t3.itertuples()}
+    res = pd.concat(
+        [
+            _noise_results((0.01, 0.02), "biased", {0.01: pub[0.01], 0.02: pub[0.02]}),
+            _noise_results((0.01, 0.02), "zero_mean", {0.01: pub3[0.01], 0.02: pub3[0.02]}),
+        ]
+    )
+    out = compare_with_paper(
+        res, paper=paper, tables=(4,), absolute_level_inconclusive_tables=(),
+        unspecified_llm="mistral", unspecified_prompt="A",
+    )  # fmt: skip
+    sel = out[(out["metric"] == "tree_distance") & (out["noise_location"] == "inputs")]
+    lvl2 = sel[np.isclose(sel["noise_level"], 0.02)].iloc[0]
+    lvl1 = sel[np.isclose(sel["noise_level"], 0.01)].iloc[0]
+    # nível > 1%: referência = nível 1% do mesmo tipo (Tabela 4)
+    assert lvl2["ref_published"] == pytest.approx(pub[0.01])
+    # nível 1%: referência = célula correspondente da Tabela 3
+    assert lvl1["ref_published"] == pytest.approx(pub3[0.01])

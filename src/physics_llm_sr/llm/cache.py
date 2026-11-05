@@ -1,7 +1,9 @@
 """Cache de avaliações LLM em memória com persistência JSONL (PRD §6.3, §15, GAP-14).
 
-Chave (:func:`cache_key`): SHA-256 de ``[canonical_key(expr), modelo@revisão,
-variante#hash_do_prompt, hash_do_contexto]``. O escore não depende dos dados, então a
+Chave (:func:`cache_key`): SHA-256 de ``[canonical_key(expr), identidade do modelo,
+variante#hash_do_prompt, hash_do_contexto]``. A identidade (:func:`model_identity`) reúne
+backend, checkpoint, revisão efetiva (SHA do Hub; digest no Ollama) e quantização; o
+backend simulado tem identidade própria que nunca coincide com a de um modelo real. O escore não depende dos dados, então a
 mesma entrada vale entre repetições, níveis de ruído e algoritmos.
 
 Persistência: um registro JSON por linha, só acrescentado (``status = "ok"`` com a
@@ -21,11 +23,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
-from physics_llm_sr.llm.interfaces import EquationEvaluation, InvalidScoreValueError
+from physics_llm_sr.llm.interfaces import BackendError, EquationEvaluation, InvalidScoreValueError
 from physics_llm_sr.symbolic.canonicalization import canonical_key
 from physics_llm_sr.symbolic.expression import Expr
 
@@ -36,7 +39,9 @@ CACHE_FILENAME = "evaluations.jsonl"
 STATUS_OK = "ok"
 STATUS_ERROR = "error"
 #: Versão do formato da chave/registro (entra na chave).
-CACHE_FORMAT_VERSION = "1"
+CACHE_FORMAT_VERSION = "2"
+FAKE_BACKEND = "fake"
+OLLAMA_BACKEND = "ollama"
 
 
 def _sha256_json(payload: Any) -> str:
@@ -49,20 +54,46 @@ def context_hash(physical_context: PhysicalContext) -> str:
     return _sha256_json(dataclasses.asdict(physical_context))
 
 
+def model_identity(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Identidade efetiva do modelo a partir de ``backend.model_metadata()``.
+
+    Campos: ``backend``, ``checkpoint``, ``revision`` (``digest`` do Ollama tem precedência
+    sobre a revisão configurada) e ``quantization``. O backend simulado recebe o prefixo
+    ``fake::`` no checkpoint. Ollama sem digest nem revisão é recusado: o mesmo tag pode
+    apontar para pesos diferentes e o cache serviria resultados de outro modelo.
+    """
+    backend = str(metadata.get("backend"))
+    checkpoint = str(metadata.get("checkpoint"))
+    revision = metadata.get("digest") or metadata.get("revision")
+    if backend == FAKE_BACKEND:
+        checkpoint = f"{FAKE_BACKEND}::{checkpoint}"
+    if backend == OLLAMA_BACKEND and not revision:
+        raise BackendError(
+            f"digest do modelo Ollama {checkpoint!r} indisponível (servidor inacessível ou "
+            "modelo ausente): sem identidade efetiva o cache não é seguro"
+        )
+    quantization = metadata.get("quantization")
+    return {
+        "backend": backend,
+        "checkpoint": checkpoint,
+        "revision": None if revision is None else str(revision),
+        "quantization": None if quantization is None else str(quantization),
+    }
+
+
 def cache_key(
     expression: Expr,
-    model_id: str,
-    model_revision: str | None,
+    identity: Mapping[str, Any],
     prompt_variant: str,
     prompt_hash: str,
     context_digest: str,
 ) -> str:
-    """Chave hexadecimal (SHA-256) de uma avaliação."""
+    """Chave hexadecimal (SHA-256) de uma avaliação (``identity`` de :func:`model_identity`)."""
     return _sha256_json(
         [
             CACHE_FORMAT_VERSION,
             canonical_key(expression),
-            [model_id, model_revision],
+            dict(identity),
             [prompt_variant, prompt_hash],
             context_digest,
         ]

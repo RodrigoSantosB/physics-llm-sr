@@ -186,6 +186,7 @@ class OllamaBackend:
         self.quantization = quantization
         self.infra = infra
         self._session = session if session is not None else requests.Session()
+        self._digest: str | None = None
 
     def _payload(self, system: str, user: str) -> dict[str, Any]:
         options = {
@@ -243,11 +244,20 @@ class OllamaBackend:
                 return str(digest) if digest else None
         return None
 
+    def resolve_identity(self) -> None:
+        """Consulta o digest efetivo em ``/api/tags`` (uma vez); :class:`BackendError` se falhar.
+
+        Separado de :meth:`model_metadata` para que esta não faça I/O de rede.
+        """
+        if self._digest is None:
+            self._digest = self.fetch_digest()
+
     def model_metadata(self) -> dict[str, Any]:
-        """Checkpoint (tag Ollama), revisão (digest), quantização, infra e opções."""
+        """Checkpoint (tag Ollama), digest efetivo (após :meth:`resolve_identity`), revisão configurada, quantização e opções."""
         return {
             "backend": "ollama",
             "checkpoint": self.model,
+            "digest": self._digest,
             "revision": self.revision,
             "quantization": self.quantization,
             "infra": self.infra,

@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash
-from physics_llm_sr.llm.inference import FakeBackend
+from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash, model_identity
+from physics_llm_sr.llm.inference import FakeBackend, OllamaBackend
+from physics_llm_sr.llm.interfaces import BackendError
 from physics_llm_sr.llm.interfaces import EquationEvaluation, EvaluationFailedError
 from physics_llm_sr.llm.prompting import PromptLibrary
 from physics_llm_sr.llm.scoring import LLMEquationEvaluator
@@ -64,10 +65,10 @@ def test_changing_model_revision_variant_or_context_misses(library: PromptLibrar
 
 
 def test_key_depends_on_every_component() -> None:
+    ident = {"backend": "ollama", "checkpoint": "m", "revision": "r", "quantization": "q4"}
     base = {
         "expression": GT,
-        "model_id": "m",
-        "model_revision": "r",
+        "identity": ident,
         "prompt_variant": "E",
         "prompt_hash": "h",
         "context_digest": context_hash(CTX),
@@ -75,14 +76,86 @@ def test_key_depends_on_every_component() -> None:
     k0 = cache_key(**base)  # type: ignore[arg-type]
     for field, value in [
         ("expression", parse_infix("t")),
-        ("model_id", "m2"),
-        ("model_revision", None),
+        ("identity", {**ident, "backend": "transformers"}),
+        ("identity", {**ident, "checkpoint": "m2"}),
+        ("identity", {**ident, "revision": None}),
+        ("identity", {**ident, "quantization": "fp16"}),
         ("prompt_variant", "D"),
         ("prompt_hash", "h2"),
         ("context_digest", "c2"),
     ]:
         assert cache_key(**{**base, field: value}) != k0  # type: ignore[arg-type]
     assert len(k0) == 64
+
+
+class _Resp:
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _OllamaSession:
+    """Sessão HTTP simulada: ``/api/chat`` responde VALID; ``/api/tags`` informa o digest."""
+
+    def __init__(self, digest: str | None) -> None:
+        self.digest = digest
+        self.posts = 0
+
+    def post(self, url: str, json: dict[str, object], timeout: float) -> _Resp:
+        self.posts += 1
+        return _Resp({"message": {"content": VALID}})
+
+    def get(self, url: str, timeout: float) -> _Resp:
+        models = [] if self.digest is None else [{"name": "m", "digest": self.digest}]
+        return _Resp({"models": models})
+
+
+def test_fake_and_real_with_same_checkpoint_have_different_keys() -> None:
+    fake = FakeBackend(VALID, checkpoint="m", revision="r").model_metadata()
+    real = {"backend": "ollama", "checkpoint": "m", "revision": "r", "quantization": None}
+    assert model_identity(fake) != model_identity(real)
+    keys = {
+        cache_key(GT, model_identity(meta), "E", "h", "c")
+        for meta in (fake, real, {**real, "backend": "transformers"})
+    }
+    assert len(keys) == 3
+
+
+def test_ollama_digest_change_is_miss(library: PromptLibrary) -> None:
+    cache = EvaluationCache()
+    s1, s2 = _OllamaSession("sha256:aaa"), _OllamaSession("sha256:bbb")
+    LLMEquationEvaluator(OllamaBackend("m", session=s1), library, cache=cache).evaluate(
+        GT, CTX, "E"
+    )
+    LLMEquationEvaluator(OllamaBackend("m", session=s1), library, cache=cache).evaluate(
+        GT, CTX, "E"
+    )
+    assert s1.posts == 1  # mesmo digest: acerto
+    LLMEquationEvaluator(OllamaBackend("m", session=s2), library, cache=cache).evaluate(
+        GT, CTX, "E"
+    )
+    assert s2.posts == 1  # digest diferente: falha de cache
+
+
+def test_ollama_without_digest_or_revision_refuses_cache(library: PromptLibrary) -> None:
+    ev = LLMEquationEvaluator(
+        OllamaBackend("m", session=_OllamaSession(None)), library, cache=EvaluationCache()
+    )
+    with pytest.raises(BackendError, match="digest"):
+        ev.evaluate(GT, CTX, "E")
+
+
+def test_quantization_change_is_miss(library: PromptLibrary) -> None:
+    cache = EvaluationCache()
+    for quant in ("q4", "q8"):
+        backend = OllamaBackend("m", quantization=quant, session=_OllamaSession("d"))
+        LLMEquationEvaluator(backend, library, cache=cache).evaluate(GT, CTX, "E")
+        assert backend._session.posts == 1  # type: ignore[attr-defined]
 
 
 def test_context_hash_sensitive_to_units_and_gt() -> None:

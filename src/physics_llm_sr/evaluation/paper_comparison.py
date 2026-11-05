@@ -38,12 +38,24 @@ RESULTS_COLUMNS = (
     "seed, mode, track, mae, mse, one_minus_r2, tree_distance, tree_distance_equivalent_min"
 )
 """Colunas do DataFrame de resultados (baseline: llm='none', prompt='none')."""
+LLM_ALIASES: dict[str, str] = {
+    "mistral_7b": "mistral",
+    "llama2_7b": "llama2",
+    "falcon_7b": "falcon",
+}
+"""Mapeamento único dos nomes de LLM do CSV publicado para os nomes canônicos das configs
+(``llm.models[].name``). Aplicado na carga e no DataFrame local."""
 _COND = ["scenario", "sr", "llm", "prompt", "noise_type", "noise_location", "noise_level"]
 _PAPER_DIR = Path(__file__).resolve().parents[3] / "references" / "paper_results"
 
 
 class ComparisonError(ValueError):
     """Entrada inconsistente para a comparação."""
+
+
+def canonical_llm(name: str) -> str:
+    """Nome canônico de LLM (aliases do CSV -> nomes das configs; demais inalterados)."""
+    return LLM_ALIASES.get(name, name)
 
 
 @dataclass(frozen=True)
@@ -165,6 +177,10 @@ def classify_cell(
         else:
             indicative = "divergente"
 
+    if ref_published is not None and local_ref is None and inconclusive_reason is None:
+        inconclusive_reason = (
+            "regra 1(c): célula publicada tem referência, mas não há série local de referência"
+        )
     reduced = reduced_run or n < n_min
     reason = inconclusive_reason
     if reason is None and reduced:
@@ -195,6 +211,7 @@ def load_paper_results(directory: Path | None = None) -> pd.DataFrame:
     ]
     df = pd.concat(frames, ignore_index=True)
     df["value"] = df["value"].astype(float)
+    df["llm"] = df["llm"].map(canonical_llm)
     return df
 
 
@@ -257,10 +274,13 @@ def _reference(row: pd.Series[Any], paper: pd.DataFrame) -> tuple[dict[str, Any]
             return None
         cond["noise_level"] = LOW_NOISE_LEVEL
     elif table == 4:
-        cond["noise_type"] = "zero_mean"
+        if np.isclose(row["noise_level"], LOW_NOISE_LEVEL):
+            cond["noise_type"] = "zero_mean"  # célula correspondente da Tabela 3
+        else:
+            cond["noise_level"] = LOW_NOISE_LEVEL  # nível 1% do mesmo ruído enviesado
     else:
         return None
-    ref_table = 3 if table == 4 else table
+    ref_table = 3 if (table == 4 and cond["noise_type"] == "zero_mean") else table
     m = paper[(paper["table"] == ref_table) & (paper["metric"] == row["metric"])]
     for c, v in cond.items():
         m = m[np.isclose(m[c], v)] if c == "noise_level" else m[m[c] == v]
@@ -302,11 +322,22 @@ def compare_with_paper(
     missing = need - set(results.columns)
     if missing:
         raise ComparisonError(f"colunas ausentes no DataFrame de resultados: {sorted(missing)}")
-    paper_df = load_paper_results() if paper is None else paper
-    wild = {"llm": unspecified_llm, "prompt": unspecified_prompt}
-    run_reduced = bool((results["mode"] != "full").any())
-    if "track" in results.columns:
-        run_reduced = run_reduced or bool((results["track"] != "paper_replication").any())
+    if "track" not in results.columns:
+        raise ComparisonError(
+            "coluna 'track' ausente: sem ela não se distingue paper_replication de "
+            "extended_analysis (extended nunca vira reprodução)"
+        )
+    paper_df = load_paper_results() if paper is None else paper.copy()
+    paper_df["llm"] = paper_df["llm"].map(canonical_llm)
+    results = results.copy()
+    results["llm"] = results["llm"].map(canonical_llm)
+    wild = {
+        "llm": None if unspecified_llm is None else canonical_llm(unspecified_llm),
+        "prompt": unspecified_prompt,
+    }
+    run_reduced = bool((results["mode"] != "full").any()) or bool(
+        (results["track"] != "paper_replication").any()
+    )
     out: list[dict[str, Any]] = []
     for _, row in paper_df[paper_df["table"].isin(list(tables))].iterrows():
         info: dict[str, Any] = {c: row[c] for c in ["table", *_COND, "metric"]}
@@ -330,13 +361,14 @@ def compare_with_paper(
             out.append(info)
             continue
         ref = _reference(row, paper_df)
-        local_ref = ref_pub = None
+        local_ref = None
+        ref_pub = None if ref is None else ref[1]
         if ref is not None:
             rs = _local_series(results, ref[0], metric, wild)
             if rs is not None:
                 idx = series.index.intersection(rs.index)
                 if len(idx):
-                    series, local_ref, ref_pub = series.loc[idx], rs.loc[idx], ref[1]
+                    series, local_ref = series.loc[idx], rs.loc[idx]
         reason = None
         if int(row["table"]) in absolute_level_inconclusive_tables:
             reason = "regra 1(a): nível absoluto depende de GAP-12 (limitação)"
