@@ -74,6 +74,13 @@ class PhysicalScenario(Protocol):
         """Contexto físico (descrições, unidades e GT infixa) para o avaliador LLM."""
         ...
 
+    def equivalent_ground_truths(self) -> tuple[str, ...]:
+        """GT do artigo (primeira) e formas fisicamente equivalentes, em infixo.
+
+        Base da métrica secundária ``tree_distance_equivalent_min``; nunca substitui a primária.
+        """
+        ...
+
 
 def require_positive(name: str, value: float | FloatArray) -> None:
     """Levanta ``ValueError`` nomeando ``name`` se algum valor não for finito e > 0."""

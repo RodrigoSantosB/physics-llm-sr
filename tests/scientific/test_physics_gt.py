@@ -12,6 +12,7 @@ from physics_llm_sr.physics import get_scenario
 from physics_llm_sr.physics.damped_wave import damped_wave_field
 from physics_llm_sr.physics.free_fall import free_fall_velocity
 from physics_llm_sr.physics.harmonic_motion import harmonic_displacement
+from physics_llm_sr.symbolic.expression import evaluate, parse_infix
 
 TOL = 1e-9
 COLUMNS = ("mass", "length", "height", "damping", "t")
@@ -104,15 +105,33 @@ def test_scenario_trajectory_and_context(name: str) -> None:
 
 def test_ground_truth_strings_evaluate_to_reference() -> None:
     cfg = PhysicsConfig()
-    env = {"sqrt": np.sqrt, "exp": np.exp, "cos": np.cos, "sin": np.sin, "log": np.log}
     for name in ("free_fall", "harmonic_motion", "damped_wave"):
         scenario = get_scenario(name, cfg)
         traj = scenario.simulate(np.random.default_rng(1), cfg.sampling, 50, 1000)
-        ns = {c: traj.X[:, i] for i, c in enumerate(COLUMNS)}
-        # eval confiável: string produzida pelo próprio projeto, ambiente restrito
-        got = eval(scenario.physical_context().ground_truth, {"__builtins__": {}}, {**env, **ns})  # noqa: S307
-        np.testing.assert_allclose(got, traj.y_true, atol=TOL)
+        expr = parse_infix(scenario.physical_context().ground_truth, variables=COLUMNS)
+        np.testing.assert_allclose(evaluate(expr, traj.X, COLUMNS), traj.y_true, atol=TOL)
     assert get_scenario("free_fall", cfg).physical_context().ground_truth == "sqrt(2*9.81*height)"
+
+
+@pytest.mark.parametrize("name", ["free_fall", "harmonic_motion", "damped_wave"])
+def test_equivalent_ground_truths_reproduce_y_true(name: str) -> None:
+    cfg = PhysicsConfig()
+    scenario = get_scenario(name, cfg)
+    forms = scenario.equivalent_ground_truths()
+    assert isinstance(forms, tuple) and forms
+    assert scenario.physical_context().ground_truth in forms
+    traj = scenario.simulate(np.random.default_rng(2), cfg.sampling, 100, 1000)
+    for form in forms:
+        got = evaluate(parse_infix(form, variables=COLUMNS), traj.X, COLUMNS)
+        np.testing.assert_allclose(got, traj.y_true, rtol=1e-9, atol=1e-9, err_msg=form)
+
+
+def test_free_fall_declares_both_equivalent_forms() -> None:
+    forms = get_scenario("free_fall", PhysicsConfig()).equivalent_ground_truths()
+    assert forms == ("sqrt(2*9.81*height)", "9.81*t")
+    for name in ("harmonic_motion", "damped_wave"):
+        sc = get_scenario(name, PhysicsConfig())
+        assert sc.equivalent_ground_truths() == (sc.physical_context().ground_truth,)
 
 
 def test_free_fall_sampling_domain() -> None:

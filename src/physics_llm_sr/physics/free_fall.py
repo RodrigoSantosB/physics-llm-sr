@@ -94,6 +94,13 @@ class FreeFallScenario:
         """Amostra uma simulação completa."""
         return simulate_scenario(self, rng, ranges, n_points, max_steps)
 
+    def equivalent_ground_truths(self) -> tuple[str, ...]:
+        """Formas infixas fisicamente equivalentes; a primeira é a GT do artigo."""
+        return (
+            self.physical_context().ground_truth,
+            f"{self.config.gravity!r}*t",
+        )
+
     def physical_context(self) -> PhysicalContext:
         """Contexto físico com GT ``sqrt(2*g*height)``."""
         return PhysicalContext(

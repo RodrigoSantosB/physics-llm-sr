@@ -169,3 +169,100 @@ def test_non_mapping_yaml_raises_config_error(tmp_path: Path) -> None:
     path.write_text("- a\n- b\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(path)
+
+
+# --- alinhamento com a auditoria (GAP-01, GAP-06, GAP-10, decisões pós-auditoria) ---
+
+GAP06_OPERATORS = {
+    "deap": ["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos"],
+    "gplearn": ["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos"],
+    "pysr": ["add", "sub", "mul", "div", "pow", "neg", "exp", "log", "sin", "cos"],
+}
+
+
+@pytest.mark.parametrize("name", ALL_CONFIGS)
+def test_shipped_configs_follow_audit(name: str) -> None:
+    cfg = load_config(CONFIGS_DIR / f"{name}.yaml")
+    assert cfg.symbolic.tree_distance_constant_penalty == 1.0
+    assert cfg.symbolic.tree_distance.descend_on_operator_mismatch is True
+    assert cfg.symbolic.tree_distance.canonicalize is True
+    assert cfg.symbolic.division_epsilon == 0.001
+    assert cfg.symbolic.log_epsilon == 0.001
+    assert cfg.symbolic.exp_clip == 100.0
+    assert {k: sorted(v) for k, v in cfg.sr.operators.items()} == {
+        k: sorted(v) for k, v in GAP06_OPERATORS.items()
+    }
+    assert cfg.loss.baseline_weights == pytest.approx((0.5, 0.5, 0.0))
+    assert cfg.llm.evaluation_scope == "all"
+
+
+def test_defaults_match_gap06_and_gap10() -> None:
+    cfg = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION)
+    assert cfg.symbolic.tree_distance_constant_penalty == 1.0
+    assert "sqrt" not in cfg.sr.operators["deap"]
+    assert {k: sorted(v) for k, v in cfg.sr.operators.items()} == {
+        k: sorted(v) for k, v in GAP06_OPERATORS.items()
+    }
+
+
+def test_sqrt_is_a_valid_operator_name_for_extended() -> None:
+    data = _smoke_dict()
+    data["track"] = "extended_analysis"
+    data["sr"] = {"operators": {"deap": ["add", "sqrt", "neg"]}}
+    assert parse_config(data).sr.operators["deap"] == ["add", "sqrt", "neg"]
+
+
+def test_baseline_weights_must_sum_to_one_and_have_w3_zero() -> None:
+    data = _smoke_dict()
+    data["loss"]["baseline_weights"] = [0.5, 0.4, 0.0]
+    with pytest.raises(ConfigError, match="baseline_weights"):
+        parse_config(data)
+    data["loss"]["baseline_weights"] = [0.4, 0.3, 0.3]
+    with pytest.raises(ConfigError, match="baseline_weights"):
+        parse_config(data)
+
+
+def test_llm_new_fields_defaults() -> None:
+    llm = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION).llm
+    assert llm.evaluation_scope == "all"
+    assert llm.top_k is None
+    assert llm.prompts_dir is None
+    assert llm.batch_size >= 1
+    assert llm.request_timeout_s > 0
+    assert llm.seed >= 0
+
+
+def test_top_k_forbidden_in_paper_replication() -> None:
+    data = _smoke_dict()
+    data["llm"] |= {"evaluation_scope": "top_k", "top_k": 10}
+    with pytest.raises(ConfigError, match="top_k"):
+        parse_config(data)
+    data["llm"] |= {"top_k": 10}
+    with pytest.raises(ConfigError, match="top_k"):
+        parse_config(data)
+
+
+def test_top_k_allowed_in_extended_and_requires_value() -> None:
+    data = _smoke_dict()
+    data["track"] = "extended_analysis"
+    data["llm"] |= {"evaluation_scope": "top_k", "top_k": 10}
+    assert parse_config(data).llm.top_k == 10
+    data["llm"] |= {"evaluation_scope": "top_k", "top_k": None}
+    with pytest.raises(ConfigError, match="top_k"):
+        parse_config(data)
+    data["llm"] |= {"evaluation_scope": "all", "top_k": 5}
+    with pytest.raises(ConfigError, match="top_k"):
+        parse_config(data)
+
+
+def test_symbolic_consumers_read_new_config_fields() -> None:
+    from physics_llm_sr.config.schemas import SymbolicConfig
+    from physics_llm_sr.symbolic.tree_distance import TreeDistanceParams
+
+    cfg = SymbolicConfig.model_validate(
+        {"tree_distance": {"descend_on_operator_mismatch": False, "canonicalize": False}}
+    )
+    params = TreeDistanceParams.from_config(cfg)
+    assert params.descend_on_operator_mismatch is False
+    assert params.canonicalize is False
+    assert params.alpha == 1.0

@@ -15,6 +15,7 @@ loss:
   w2: 0.3333333333333333
   w3: 0.3333333333333334
   normalization: literal
+  baseline_weights: [0.5, 0.5, 0.0]  # GAP-01: baseline sem LLM (w3=0, w1:w2 renormalizados)
 llm:
   backend: fake
   temperature: 0.0
@@ -23,6 +24,10 @@ llm:
   failure_policy: retry
   prompt_variants: [E]
   cache_dir: .cache/llm_smoke
+  evaluation_scope: all               # replication: todos os candidatos únicos, com cache
+  batch_size: 1
+  request_timeout_s: 120.0
+  seed: 42
   models:
     - {name: fake, checkpoint: fake-evaluator, revision: null, quantization: null, infra: local}
 experiments:
