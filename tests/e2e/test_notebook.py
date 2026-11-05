@@ -23,10 +23,12 @@ NOTEBOOKS_DIR = Path(__file__).resolve().parents[2] / "notebooks"
 NOTEBOOK = NOTEBOOKS_DIR / "03_pipeline_completo.ipynb"  # notebook 03 (etapas 00-18)
 NB01 = NOTEBOOKS_DIR / "01_baseline_sem_llm.ipynb"
 NB02 = NOTEBOOKS_DIR / "02_um_llm_um_caso.ipynb"
+NB04 = NOTEBOOKS_DIR / "04_comparacao_com_artigo.ipynb"
 BUILDERS = {
     NB01: "build_01_baseline.py",
     NB02: "build_02_um_llm.py",
     NOTEBOOK: "build_03_pipeline_completo.py",
+    NB04: "build_04_comparacao_com_artigo.py",
 }
 #: Auxiliares de exibição triviais permitidos nas células (nenhum é lógica científica).
 ALLOWED_HELPERS: frozenset[str] = frozenset({"show_table"})
@@ -193,8 +195,8 @@ def test_notebook_matches_its_generator() -> None:
 
 
 # ------------------------------------------------------------------ notebooks 01, 02 e 03
-ALL_NOTEBOOKS = (NB01, NB02, NOTEBOOK)
-OWN_TAG = {NB01: "nb01", NB02: "nb02", NOTEBOOK: "nb03"}
+ALL_NOTEBOOKS = (NB01, NB02, NOTEBOOK, NB04)
+OWN_TAG = {NB01: "nb01", NB02: "nb02", NOTEBOOK: "nb03", NB04: "nb04"}
 TOP_PARAMETERS = {
     NB01: ("CENARIOS", "ALGORITMOS", "REPETICOES", "NIVEIS_RUIDO", "LOCALIZACOES", "BRACO"),
     NB02: (
@@ -210,6 +212,7 @@ TOP_PARAMETERS = {
         "LOCALIZACOES",
     ),
     NOTEBOOK: ("PRESET", "MODELOS", "CENARIOS", "EXPERIMENTOS", "ALGORITMOS", "REPETICOES"),
+    NB04: ("RUN_DIRS", "OUT_DIR"),
 }
 SCIENCE_LITERALS = re.compile(
     r'["\'](free_fall|harmonic_motion|damped_wave|mistral|llama2|falcon)["\']'
@@ -343,7 +346,9 @@ def test_notebook_02_defaults_and_steps() -> None:
         assert needle in code, needle
 
 
-@pytest.mark.parametrize("path", ALL_NOTEBOOKS, ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path", (NB01, NB02, NOTEBOOK), ids=lambda p: p.name
+)  # o 04 lê runs do 01/02
 def test_notebooks_are_independent_and_use_only_their_own_directories(path: Path) -> None:
     """Cada notebook grava só em ``results/nbXX*`` próprio e não referencia pastas dos outros."""
     own = OWN_TAG[path]
@@ -352,7 +357,7 @@ def test_notebooks_are_independent_and_use_only_their_own_directories(path: Path
         assert not re.search(
             rf"{other}[_/]|results/{other}|configs_derivadas/{other}|llm_{other}", text
         ), f"{path.name} referencia {other}"
-    for other_nb in ALL_NOTEBOOKS:
+    for other_nb in (NB01, NB02, NOTEBOOK, NB04):
         if other_nb != path:
             assert other_nb.name not in text, f"{path.name} referencia {other_nb.name}"
 

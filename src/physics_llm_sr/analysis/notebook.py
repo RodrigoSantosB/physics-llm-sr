@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 from pathlib import Path
 from typing import Any
@@ -10,21 +11,34 @@ from typing import Any
 import pandas as pd
 
 from physics_llm_sr.analysis import pipeline
+from physics_llm_sr.config.paths import resolve_project_path
+
+DEFAULT_OUT = "results/nb04_analise"
 
 RUN_DIRS_ENV = "PHYSICS_LLM_SR_RUN_DIRS"
 """Lista de diretórios de runs (separador ``os.pathsep``); sobrepõe ``RUN_DIRS`` do notebook."""
+
+
+def _in_project(path: str | Path) -> Path:
+    """Caminho absoluto; relativo vale a partir da raiz do projeto (no Colab, o Drive)."""
+    return resolve_project_path(path)
 
 
 def resolve_run_dirs(run_dirs: list[str]) -> list[Path]:
     """``RUN_DIRS`` do notebook, ou a variável de ambiente se definida."""
     env = os.environ.get(RUN_DIRS_ENV)
     chosen = env.split(os.pathsep) if env else run_dirs
-    return [Path(p) for p in chosen if p]
+    return [_in_project(p) for p in chosen if p]
+
+
+def _timestamp() -> str:
+    return dt.datetime.now().strftime(pipeline.TIMESTAMP_FORMAT)
 
 
 def generate(run_dirs: list[str], out_dir: str | None = None) -> Path:
     """Gera tabelas e figuras e devolve o diretório de saída."""
-    return pipeline.run_analysis(resolve_run_dirs(run_dirs), out_dir)
+    out = _in_project(out_dir) if out_dir else _in_project(DEFAULT_OUT) / _timestamp()
+    return pipeline.run_analysis(resolve_run_dirs(run_dirs), out)
 
 
 def table(out: Path, name: str, columns: list[str] | None = None, head: int = 12) -> pd.DataFrame:

@@ -1,5 +1,5 @@
 .PHONY: install check test test-julia test-llm-real notebook-smoke notebook-smoke-01 \
-	notebook-smoke-02 notebook-smoke-03 lint format \
+	notebook-smoke-02 notebook-smoke-03 clean-notebook-smoke lint format \
 	smoke pilot pilot-colab report compare export-legado
 
 NOT_OPT_IN = not slow and not julia and not llm_real
@@ -39,7 +39,11 @@ test-llm-real:
 # (sem PySR). Os resultados do smoke ficam em results/notebook_smoke/ (raiz de projeto própria) e os
 # notebooks executados em results/notebook_smoke/*.executed.ipynb. O 04 (comparação com o artigo) lê
 # execuções existentes e não faz parte do smoke.
-notebook-smoke: notebook-smoke-01 notebook-smoke-02 notebook-smoke-03
+notebook-smoke: clean-notebook-smoke notebook-smoke-01 notebook-smoke-02 notebook-smoke-03
+
+# O smoke sempre parte do zero (a retomada exige o mesmo código/commit).
+clean-notebook-smoke:
+	rm -rf results/notebook_smoke
 
 notebook-smoke-01:
 	PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
