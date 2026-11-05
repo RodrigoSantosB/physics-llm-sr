@@ -165,3 +165,12 @@ def test_build_objective_from_config() -> None:
     pysr = build_objective(cfg, fake, CTX, "pysr", False, FEATURES)
     assert pysr.error_metric == "huber" and pysr.evaluator is fake
     assert build_objective(cfg, fake, CTX, "gplearn", False, FEATURES).error_metric == "mse"
+
+
+def test_combined_objective_satisfies_candidate_objective_protocol() -> None:
+    from physics_llm_sr.optimization.objective import CombinedObjective
+    from physics_llm_sr.sr.interfaces import CandidateObjective
+
+    obj = CombinedObjective((0.5, 0.5, 0.0), None, None, feature_names=["a", "b"])
+    assert isinstance(obj, CandidateObjective)
+    assert obj.feature_names == ("a", "b")
