@@ -10,8 +10,7 @@ import pytest
 
 from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash, model_identity
 from physics_llm_sr.llm.inference import FakeBackend, OllamaBackend
-from physics_llm_sr.llm.interfaces import BackendError
-from physics_llm_sr.llm.interfaces import EquationEvaluation, EvaluationFailedError
+from physics_llm_sr.llm.interfaces import BackendError, EquationEvaluation, EvaluationFailedError
 from physics_llm_sr.llm.prompting import PromptLibrary
 from physics_llm_sr.llm.scoring import LLMEquationEvaluator
 from physics_llm_sr.physics.registry import get_scenario

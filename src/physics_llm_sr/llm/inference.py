@@ -253,7 +253,7 @@ class OllamaBackend:
             self._digest = self.fetch_digest()
 
     def model_metadata(self) -> dict[str, Any]:
-        """Checkpoint (tag Ollama), digest efetivo (após :meth:`resolve_identity`), revisão configurada, quantização e opções."""
+        """Checkpoint, digest (após :meth:`resolve_identity`), revisão, quantização e opções."""
         return {
             "backend": "ollama",
             "checkpoint": self.model,

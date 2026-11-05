@@ -3,8 +3,8 @@
 Chave (:func:`cache_key`): SHA-256 de ``[canonical_key(expr), identidade do modelo,
 variante#hash_do_prompt, hash_do_contexto]``. A identidade (:func:`model_identity`) reúne
 backend, checkpoint, revisão efetiva (SHA do Hub; digest no Ollama) e quantização; o
-backend simulado tem identidade própria que nunca coincide com a de um modelo real. O escore não depende dos dados, então a
-mesma entrada vale entre repetições, níveis de ruído e algoritmos.
+backend simulado tem identidade própria que nunca coincide com a de um modelo real.
+O escore não depende dos dados, então a mesma entrada vale entre repetições, níveis de ruído e algoritmos.
 
 Persistência: um registro JSON por linha, só acrescentado (``status = "ok"`` com a
 avaliação e a resposta crua; ``status = "error"`` com a mensagem e as respostas cruas).
@@ -20,10 +20,10 @@ import dataclasses
 import hashlib
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from collections.abc import Mapping
 from typing import Any
 
 from physics_llm_sr.config.schemas import LLMConfig

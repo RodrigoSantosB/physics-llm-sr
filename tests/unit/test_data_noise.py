@@ -94,3 +94,14 @@ def test_invalid_spec_rejected() -> None:
         NoiseSpec("zero_mean", -0.1, "target")
     with pytest.raises(ValueError, match="kind"):
         NoiseSpec("weird", 0.1, "target")  # type: ignore[arg-type]
+
+
+def test_default_bias_fraction_comes_from_exp5_config() -> None:
+    import inspect
+
+    from physics_llm_sr.config.schemas import Exp5Config
+    from physics_llm_sr.data import noise
+
+    spec = noise.NoiseSpec("biased", 0.01, "target")
+    assert spec.bias_fraction == Exp5Config().mean_fraction
+    assert "0.01" not in inspect.getsource(noise).replace("level*std", "")  # sem duplicata
