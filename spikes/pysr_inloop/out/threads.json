@@ -1,0 +1,51 @@
+[
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 2,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "multithreading",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 13.17,
+    "julia_loss_calls": 4742,
+    "best": "x1 ^ 0.8640618",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 7.8733273,
+        "equation": "x1",
+        "e": 21.72,
+        "c": 0.9,
+        "L_recomputed": 7.8733
+      },
+      {
+        "complexity": 3,
+        "loss": 2.6111479,
+        "equation": "x1 ^ 0.8640618",
+        "e": 3.9334,
+        "c": 0.9,
+        "L_recomputed": 2.6111
+      }
+    ],
+    "callback_calls": 4742,
+    "unique_strings": 1643,
+    "unique_canonical_keys": 1438,
+    "unique_keys_3sig": 1254,
+    "unique_structures": 660,
+    "evaluator_calls": 1438,
+    "cache_hit_rate": 0.6967524251370729,
+    "parse_errors": {},
+    "python_seconds": 0.468
+  }
+]

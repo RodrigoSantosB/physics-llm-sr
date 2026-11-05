@@ -1,7 +1,11 @@
 """Cache de avaliações LLM em memória com persistência JSONL (PRD §6.3, §15, GAP-14).
 
-Chave (:func:`cache_key`): SHA-256 de ``[canonical_key(expr), identidade do modelo,
-variante#hash_do_prompt, hash_do_contexto]``. A identidade (:func:`model_identity`) reúne
+Chave (:func:`cache_key`): SHA-256 de ``[expression_key(expr), identidade do modelo,
+variante#hash_do_prompt, hash_do_contexto]``. :func:`expression_key` é a forma canônica
+com constantes arredondadas a ``significant_digits`` algarismos significativos (default 3,
+hipótese GAP-14 = precisão publicada; vale para todos os algoritmos) no modo ``exact``, ou
+só a estrutura (constantes mascaradas) no modo ``structure`` — **desvio**, permitido apenas
+em ``extended_analysis`` (``llm.cache_key_mode``). A identidade (:func:`model_identity`) reúne
 backend, checkpoint, revisão efetiva (SHA do Hub; digest no Ollama) e quantização; o
 backend simulado tem identidade própria que nunca coincide com a de um modelo real.
 O escore não depende dos dados, então a mesma entrada vale entre repetições, níveis de
@@ -25,14 +29,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
 from physics_llm_sr.llm.interfaces import BackendError, EquationEvaluation, InvalidScoreValueError
 from physics_llm_sr.symbolic.canonicalization import canonical_key
-from physics_llm_sr.symbolic.expression import Expr
+from physics_llm_sr.symbolic.expression import Const, Expr, Op
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +45,61 @@ CACHE_FILENAME = "evaluations.jsonl"
 STATUS_OK = "ok"
 STATUS_ERROR = "error"
 #: Versão do formato da chave/registro (entra na chave).
-CACHE_FORMAT_VERSION = "2"
+CACHE_FORMAT_VERSION = "3"  # 3: chave com algarismos significativos/modo (GAP-14)
 FAKE_BACKEND = "fake"
 OLLAMA_BACKEND = "ollama"
+
+CacheKeyMode = Literal["exact", "structure"]
+CACHE_KEY_MODES: tuple[str, ...] = ("exact", "structure")
+#: Algarismos significativos das constantes na chave (GAP-14: precisão publicada).
+DEFAULT_CACHE_SIGNIFICANT_DIGITS = 3
+#: ``exact``: constantes arredondadas; ``structure``: constantes mascaradas (desvio).
+DEFAULT_CACHE_KEY_MODE: CacheKeyMode = "exact"
+#: Valor que substitui toda constante no modo ``structure`` (antes de ordenar os filhos).
+STRUCTURE_MASK_VALUE = 1.0
+#: Prefixo da chave estrutural (nunca colide com uma chave ``exact``).
+STRUCTURE_KEY_PREFIX = "structure:"
+
+
+def _mask_constants(expr: Expr) -> Expr:
+    if isinstance(expr, Const):
+        return Const(STRUCTURE_MASK_VALUE)
+    if isinstance(expr, Op):
+        return Op(expr.name, tuple(_mask_constants(c) for c in expr.children))
+    return expr
+
+
+def validate_key_options(significant_digits: int, key_mode: str) -> None:
+    """Valida ``significant_digits >= 1`` e ``key_mode`` em :data:`CACHE_KEY_MODES`.
+
+    Raises:
+        ValueError: opção inválida.
+    """
+    if significant_digits < 1:
+        raise ValueError("significant_digits deve ser >= 1")
+    if key_mode not in CACHE_KEY_MODES:
+        raise ValueError(f"key_mode deve ser um de {CACHE_KEY_MODES}, não {key_mode!r}")
+
+
+def expression_key(
+    expression: Expr,
+    significant_digits: int = DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+    key_mode: str = DEFAULT_CACHE_KEY_MODE,
+) -> str:
+    """Chave textual da expressão para cache e deduplicação de avaliações LLM.
+
+    ``exact``: ``canonical_key`` com constantes a ``significant_digits`` algarismos.
+    ``structure``: toda constante vira :data:`STRUCTURE_MASK_VALUE` antes da canonização
+    (a ordem dos filhos comutativos não depende das constantes) e a chave recebe o
+    prefixo :data:`STRUCTURE_KEY_PREFIX`.
+
+    Raises:
+        ValueError: ``significant_digits < 1`` ou ``key_mode`` desconhecido.
+    """
+    validate_key_options(significant_digits, key_mode)
+    if key_mode == "structure":
+        return STRUCTURE_KEY_PREFIX + canonical_key(_mask_constants(expression))
+    return canonical_key(expression, significant_digits)
 
 
 def _sha256_json(payload: Any) -> str:
@@ -89,12 +145,18 @@ def cache_key(
     prompt_variant: str,
     prompt_hash: str,
     context_digest: str,
+    *,
+    significant_digits: int = DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+    key_mode: str = DEFAULT_CACHE_KEY_MODE,
 ) -> str:
-    """Chave hexadecimal (SHA-256) de uma avaliação (``identity`` de :func:`model_identity`)."""
+    """Chave hexadecimal (SHA-256) de uma avaliação (``identity`` de :func:`model_identity`).
+
+    A expressão entra via :func:`expression_key` (``significant_digits``, ``key_mode``).
+    """
     return _sha256_json(
         [
             CACHE_FORMAT_VERSION,
-            canonical_key(expression),
+            expression_key(expression, significant_digits, key_mode),
             dict(identity),
             [prompt_variant, prompt_hash],
             context_digest,

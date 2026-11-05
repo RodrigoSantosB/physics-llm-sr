@@ -229,3 +229,50 @@ def test_out_of_range_record_on_disk_is_rejected(tmp_path: Path) -> None:
     path.write_text(json.dumps(bad) + "\n", encoding="utf-8")
     reloaded = EvaluationCache(path)
     assert reloaded.get("k") is None and reloaded.corrupted_lines == 1
+
+
+# --------------------------------------------------------------------------- chave (GAP-14)
+
+
+def test_expression_key_rounds_constants_to_three_significant_digits_by_default() -> None:
+    from physics_llm_sr.llm.cache import DEFAULT_CACHE_SIGNIFICANT_DIGITS, expression_key
+
+    assert DEFAULT_CACHE_SIGNIFICANT_DIGITS == 3
+    a = parse_infix("9.8123 * t")
+    b = parse_infix("9.8149 * t")
+    c = parse_infix("9.8251 * t")
+    assert expression_key(a) == expression_key(b)  # 9.81 == 9.81
+    assert expression_key(a) != expression_key(c)  # 9.81 != 9.83
+    assert expression_key(a, significant_digits=6) != expression_key(b, significant_digits=6)
+
+
+def test_expression_key_structure_mode_masks_constants() -> None:
+    from physics_llm_sr.llm.cache import expression_key
+
+    a = parse_infix("2.0 * t + 7.5 * mass")
+    b = parse_infix("3.0 * mass + 1.25 * t")  # mesma estrutura, constantes e ordem diferentes
+    other = parse_infix("2.0 * t - 7.5 * mass")
+    assert expression_key(a, key_mode="structure") == expression_key(b, key_mode="structure")
+    assert expression_key(a, key_mode="structure") != expression_key(other, key_mode="structure")
+    assert expression_key(a, key_mode="exact") != expression_key(b, key_mode="exact")
+    # chave estrutural nunca colide com a exata
+    assert expression_key(parse_infix("1.0 * t"), key_mode="structure") != expression_key(
+        parse_infix("1.0 * t"), key_mode="exact"
+    )
+    with pytest.raises(ValueError):
+        expression_key(a, key_mode="loose")
+
+
+def test_cache_key_accepts_significant_digits_and_key_mode() -> None:
+    ident = model_identity({"backend": "fake", "checkpoint": "m", "revision": "r"})
+    a, b = parse_infix("9.8123 * t"), parse_infix("9.8149 * t")
+    ctx = context_hash(CTX)
+    assert cache_key(a, ident, "E", "h", ctx) == cache_key(b, ident, "E", "h", ctx)
+    assert cache_key(a, ident, "E", "h", ctx, significant_digits=6) != cache_key(
+        b, ident, "E", "h", ctx, significant_digits=6
+    )
+    s1, s2 = parse_infix("2.0 * t"), parse_infix("5.0 * t")
+    assert cache_key(s1, ident, "E", "h", ctx) != cache_key(s2, ident, "E", "h", ctx)
+    assert cache_key(s1, ident, "E", "h", ctx, key_mode="structure") == cache_key(
+        s2, ident, "E", "h", ctx, key_mode="structure"
+    )

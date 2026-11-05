@@ -18,6 +18,10 @@ Convenções explícitas:
   ``invalid``; o diagnóstico vive em ``CombinedObjective.diagnostics`` (um dict por
   expressão da última chamada, mesma ordem).
 - ``EvaluationFailedError`` do avaliador propaga: nunca há nota substituta.
+- Deduplicação do lote por :func:`llm.cache.expression_key` com ``significant_digits``
+  (default 3, GAP-14) e ``key_mode`` (``exact`` | ``structure``; ``structure`` mascara as
+  constantes e é desvio, só em ``extended_analysis``). Expressões com a mesma chave
+  recebem a avaliação do primeiro representante do lote.
 """
 
 from __future__ import annotations
@@ -32,10 +36,15 @@ import numpy as np
 
 from physics_llm_sr.config.schemas import WEIGHT_SUM_TOLERANCE, ExperimentConfig
 from physics_llm_sr.core_types import PhysicalContext
+from physics_llm_sr.llm.cache import (
+    DEFAULT_CACHE_KEY_MODE,
+    DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+    expression_key,
+    validate_key_options,
+)
 from physics_llm_sr.llm.interfaces import PhysicsEquationEvaluator
 from physics_llm_sr.llm.scoring import penalty
 from physics_llm_sr.sr.interfaces import FloatArray, LossBreakdown
-from physics_llm_sr.symbolic.canonicalization import canonical_key
 from physics_llm_sr.symbolic.expression import Expr, evaluate, size
 from physics_llm_sr.symbolic.operators import DEFAULT_PROTECTION, ProtectionParams
 
@@ -94,14 +103,20 @@ class CombinedObjective:
         huber_delta: float = 1.0,
         max_nodes: int | None = None,
         protection: ProtectionParams = DEFAULT_PROTECTION,
+        significant_digits: int = DEFAULT_CACHE_SIGNIFICANT_DIGITS,
+        key_mode: str = DEFAULT_CACHE_KEY_MODE,
     ) -> None:
         """Valida e guarda a configuração.
 
+        ``significant_digits``/``key_mode``: chave de deduplicação do lote enviado ao LLM
+        (``llm.cache_significant_digits``/``llm.cache_key_mode``).
+
         Raises:
             ValueError: pesos negativos/soma != 1, modo/métrica desconhecidos,
-                ``huber_delta <= 0``, ``normalized`` sem ``max_nodes``, ou ``w3 > 0``
-                sem avaliador/contexto.
+                ``huber_delta <= 0``, ``normalized`` sem ``max_nodes``, ``w3 > 0``
+                sem avaliador/contexto, ou opção de chave inválida.
         """
+        validate_key_options(significant_digits, key_mode)
         if len(weights) != len(("w1", "w2", "w3")):
             raise ValueError("weights deve ter 3 elementos (w1, w2, w3)")
         if any(not math.isfinite(w) or w < 0 for w in weights):
@@ -128,6 +143,8 @@ class CombinedObjective:
         self.huber_delta = huber_delta
         self.max_nodes = max_nodes
         self.protection = protection
+        self.significant_digits = significant_digits
+        self.key_mode: str = key_mode
         self.counters = ObjectiveCounters()
         self.diagnostics: list[dict[str, Any]] = []
         self.metadata: dict[str, Any] = {
@@ -139,6 +156,8 @@ class CombinedObjective:
             "max_nodes": max_nodes,
             "prompt_variant": prompt_variant,
             "llm_in_loop": weights[2] > 0,
+            "cache_significant_digits": significant_digits,
+            "cache_key_mode": key_mode,
         }
 
     # ------------------------------------------------------------------ componentes
@@ -172,7 +191,7 @@ class CombinedObjective:
         """Perda composta de cada expressão (ordem preservada).
 
         Uma única chamada a ``evaluate_many`` por invocação, com candidatos válidos
-        deduplicados por ``canonical_key``.
+        deduplicados por :meth:`llm_key`.
         """
         y_arr = np.asarray(y, dtype=np.float64)
         with np.errstate(all="ignore"):
@@ -191,7 +210,7 @@ class CombinedObjective:
             unique: dict[str, Expr] = {}
             for ok, expr in zip(valid, exprs, strict=True):
                 if ok:
-                    unique.setdefault(canonical_key(expr), expr)
+                    unique.setdefault(self.llm_key(expr), expr)
             if unique:
                 assert self.evaluator is not None and self.physical_context is not None
                 evals = self._call_llm(unique)
@@ -207,11 +226,15 @@ class CombinedObjective:
                 out.append(LossBreakdown(w1 * e + w2 * s, e, s, 0.0, None))
                 self.diagnostics.append({"invalid": False, "c_status": C_STATUS_W3_ZERO})
             else:
-                evaluation = evals[canonical_key(expr)]
+                evaluation = evals[self.llm_key(expr)]
                 c = penalty(evaluation)
                 out.append(LossBreakdown(w1 * e + w2 * s + w3 * c, e, s, c, evaluation))
                 self.diagnostics.append({"invalid": False, "c_status": C_STATUS_EVALUATED})
         return out
+
+    def llm_key(self, expr: Expr) -> str:
+        """Chave de deduplicação/cache da avaliação LLM (``significant_digits``, ``key_mode``)."""
+        return expression_key(expr, self.significant_digits, self.key_mode)
 
     def _call_llm(self, unique: dict[str, Expr]) -> dict[str, Any]:
         assert self.evaluator is not None and self.physical_context is not None
@@ -252,6 +275,8 @@ def build_objective(
       demais: MSE.
     - ``normalized``: ``max_nodes = 2**(sr.deap.max_depth + 1) - 1`` (nós de uma árvore
       binária completa na profundidade máxima; a config não tem ``loss.max_nodes``).
+    - Chave de deduplicação: ``llm.cache_significant_digits`` e ``llm.cache_key_mode``
+      quando existirem na config; senão os defaults (3, ``exact``).
     """
     loss = cfg.loss
     weights = loss.baseline_weights if baseline else (loss.w1, loss.w2, loss.w3)
@@ -268,4 +293,8 @@ def build_objective(
         huber_delta=cfg.sr.pysr.huber_delta,
         max_nodes=max_nodes if loss.normalization == "normalized" else None,
         protection=ProtectionParams.from_config(cfg.symbolic),
+        significant_digits=int(
+            getattr(cfg.llm, "cache_significant_digits", DEFAULT_CACHE_SIGNIFICANT_DIGITS)
+        ),
+        key_mode=str(getattr(cfg.llm, "cache_key_mode", DEFAULT_CACHE_KEY_MODE)),
     )
