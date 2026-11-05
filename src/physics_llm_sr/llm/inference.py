@@ -24,6 +24,7 @@ import requests
 
 from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import Track
+from physics_llm_sr.llm.hf_snapshot import download_verified_snapshot
 from physics_llm_sr.llm.interfaces import (
     BackendConfigurationError,
     BackendError,
@@ -390,9 +391,9 @@ class TransformersBackend:
             return
         torch, transformers = self._modules()
         self._load_tokenizer()
+        snapshot = download_verified_snapshot(self.checkpoint, self.revision)
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            self.checkpoint,
-            revision=self.revision,
+            str(snapshot),
             torch_dtype=torch.float16,
             trust_remote_code=False,
             device_map=self.device_map,

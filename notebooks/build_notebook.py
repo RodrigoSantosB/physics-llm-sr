@@ -73,7 +73,7 @@ md(r"""
 - `PRESET`: `"hoje"` (padrão: queda livre no Colab A100, Mistral, ~4 h, etapas P1 a P4), `"hoje_literal"`, `"3_modelos_queda_livre"`, `"completo"` (artigo inteiro, dias de GPU), `"completo_extended"` ou `"smoke"` (minutos, avaliador simulado). Os braços literal e extended nunca se misturam nas tabelas de reprodução.
 - `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`: sobrescrevem o preset quando não são `None`. A configuração derivada é validada pelo schema e gravada em `<PROJECT_ROOT>/configs_derivadas/<hash>.yaml`; com sobrescritas, o diretório de resultados ganha o sufixo do hash (retomada correta, sem misturar execuções). Llama 2 é restrito: exige o segredo `HF_TOKEN` do Colab.
 - `LOAD_EXISTING_RUN` (opcional, vazio por padrão): caminho de um `run_dir` já gerado (por exemplo, o do piloto). Com ele, as etapas só **apresentam** os resultados existentes, sem executar nada.
-- `REPO_URL`, `REPO_DIR`, `MOUNT_DRIVE`, `DRIVE_PROJECT_DIR`, `HF_HOME_DIR`: usados só no Colab. A **primeira célula de código** é autossuficiente: monta o Drive, clona (se `REPO_URL`), verifica `REPO_DIR` (erro claro se faltar), instala o pacote e só então a etapa 01 importa `physics_llm_sr`. `HF_HOME_DIR` guarda os pesos dos modelos (cerca de 40 GB) no Drive para não baixá-los a cada sessão.
+- `REPO_URL`, `REPO_DIR`, `MOUNT_DRIVE`, `DRIVE_PROJECT_DIR`, `HF_HOME_DIR`: usados só no Colab. A **primeira célula de código** é autossuficiente: monta o Drive, clona (se `REPO_URL`), verifica `REPO_DIR` (erro claro se faltar), instala o pacote e só então a etapa 01 importa `physics_llm_sr`. `HF_HOME_DIR` (padrão `/content/hf_home`, disco local) guarda os pesos (cerca de 15 GB por modelo) e sobrescreve `HF_HOME`; Drive só com ≥ 20 GB livres por modelo (não recomendado: trunca os pesos e causa `header too large`). Se `transformers`/`huggingface_hub` já foi importado com outro `HF_HOME`, reinicie o ambiente.
 """)
 
 code(r"""
@@ -105,7 +105,9 @@ REPO_BRANCH = "main"
 REPO_DIR = "/content/physics-llm-sr"  # alternativa: pasta com .git no Drive (REPO_URL = "")
 MOUNT_DRIVE = True  # monta o Drive para persistir resultados/cache/HF_HOME (não para o código)
 DRIVE_PROJECT_DIR = "/content/drive/MyDrive/physics-llm-sr-runs"
-HF_HOME_DIR = ""  # vazio: <DRIVE_PROJECT_DIR>/hf_home com MOUNT_DRIVE (pesos persistem)
+# Pesos (~15 GB por modelo) no disco LOCAL do Colab. Drive só com >= 20 GB livres por modelo (não
+# recomendado: cota de 15 GB e escrita via FUSE truncam o arquivo -> "header too large").
+HF_HOME_DIR = "/content/hf_home"
 
 # Preparo autossuficiente (não importa o pacote do projeto): Drive -> clone/pull -> verificação -> pip -> path.
 import importlib.util
@@ -137,8 +139,8 @@ if IN_COLAB:
         )
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", f"{_repo}[hf]"], check=True)
     os.environ.setdefault("PHYSICS_LLM_SR_REPO_DIR", str(_repo))
-    if MOUNT_DRIVE or HF_HOME_DIR:
-        os.environ.setdefault("HF_HOME", HF_HOME_DIR or f"{DRIVE_PROJECT_DIR}/hf_home")
+    if HF_HOME_DIR:  # sobrescreve; se transformers/huggingface_hub já foi importado, reinicie o ambiente
+        os.environ["HF_HOME"] = HF_HOME_DIR
 # O .pth do pip -e não vale no kernel já aberto: garante o src no sys.path.
 if (_repo / "src").is_dir() and str(_repo / "src") not in sys.path:
     sys.path.insert(0, str(_repo / "src"))

@@ -44,7 +44,8 @@ HF_TOKEN_ENV = "HF_TOKEN"
 HF_SECRET_NAME = "HF_TOKEN"
 GATED_PREFIX = "meta-llama/"  # repositórios restritos (Llama 2)
 HF_HOME_ENV = "HF_HOME"
-HF_HOME_SUBDIR = "hf_home"
+DEFAULT_COLAB_HF_HOME = "/content/hf_home"  # disco local: o Drive trunca arquivos de ~14,5 GB
+HF_MODULES = ("transformers", "huggingface_hub")
 PYPROJECT = "pyproject.toml"
 COLAB_MODULE = "google.colab"
 DEFAULT_COLAB_REPO_DIR = "/content/physics-llm-sr"
@@ -214,7 +215,16 @@ def _plan_colab(
             "PySR: a primeira importação instala o Julia e as dependências (vários minutos).",
         )
     )
-    hf = hf_home or (f"{drive_dir}/{HF_HOME_SUBDIR}" if mount_drive else None)
+    hf = hf_home or DEFAULT_COLAB_HF_HOME
+    plan.actions.append(
+        SetupAction(
+            "warning",
+            f"HF_HOME = {hf} (sobrescreve o valor anterior). Se transformers/huggingface_hub "
+            "já foi importado nesta sessão com outro HF_HOME, reinicie o ambiente de execução. "
+            "Cache no Drive só com >= 20 GB livres por modelo (não recomendado: a cota e o FUSE "
+            "truncam os pesos e geram 'header too large').",
+        )
+    )
     return root, hf
 
 
@@ -235,8 +245,8 @@ def setup_environment(
 
     No Colab, na ordem: monta o Drive (opcional), clona (se ``repo_url``), verifica o
     repositório (ausente: :class:`RepoNotFoundError`), ``pip install -e <repo>[hf]`` e define
-    ``HF_HOME`` (``hf_home``, ou ``<drive_dir>/hf_home`` com Drive: os pesos dos modelos não
-    são rebaixados a cada sessão), além de ``PHYSICS_LLM_SR_PROJECT_ROOT`` (Drive: resultados e
+    ``HF_HOME`` (``hf_home``, ou o disco local ``/content/hf_home``; sempre sobrescreve, pois
+    pesos no Drive truncam), além de ``PHYSICS_LLM_SR_PROJECT_ROOT`` (Drive: resultados e
     cache persistem), ``PHYSICS_LLM_SR_PROMPTS_DIR`` e ``PHYSICS_LLM_SR_REFERENCES_DIR``.
     Localmente: só as variáveis de ambiente (a raiz do projeto = raiz do repositório).
     Variáveis já definidas pelo usuário são respeitadas.
@@ -261,7 +271,7 @@ def setup_environment(
     if hf is not None:
         wanted[HF_HOME_ENV] = hf
     for name, value in wanted.items():
-        if name in env:
+        if name in env and name != HF_HOME_ENV:
             plan.actions.append(
                 SetupAction("env_kept", f"{name} já definida; mantida", name=name, value=env[name])
             )
