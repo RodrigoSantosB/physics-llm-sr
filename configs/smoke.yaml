@@ -1,0 +1,34 @@
+# Smoke: minúsculo, backend fake determinístico; roda em segundos, sem LLM nem Julia reais.
+mode: smoke
+track: paper_replication
+seeds:
+  master: 42
+data:
+  n_simulations: 5
+  n_time_points: 20
+  max_steps: 1000
+sr:
+  population: 10
+  generations: 3
+loss:
+  w1: 0.3333333333333333              # [hipótese GAP-01]
+  w2: 0.3333333333333333
+  w3: 0.3333333333333334
+  normalization: literal
+llm:
+  backend: fake
+  temperature: 0.0
+  max_new_tokens: 64
+  max_retries: 1
+  failure_policy: retry
+  prompt_variants: [E]
+  cache_dir: .cache/llm_smoke
+  models:
+    - {name: fake, checkpoint: fake-evaluator, revision: null, quantization: null, infra: local}
+experiments:
+  run: [baseline, llm_integration]
+  repetitions: 1
+  scenarios: [free_fall]
+  algorithms: [deap, gplearn]
+  models: [fake]
+output_dir: results/smoke
