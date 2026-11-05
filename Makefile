@@ -27,10 +27,12 @@ test-julia:
 test-llm-real:
 	uv run pytest -m llm_real
 
-# Executa o notebook em modo smoke (o notebook é entregue por outra PR).
+# Executa o notebook principal em RUN_PROFILE="smoke" (valor padrão do notebook), de ponta a ponta,
+# sem LLM real. O notebook executado vai para results/notebook_smoke/.
 notebook-smoke:
-	PHYSICS_LLM_SR_MODE=smoke uv run jupyter nbconvert --to notebook --execute $(NOTEBOOK) \
-		--output-dir results/notebook_smoke
+	uv run jupyter nbconvert --to notebook --execute $(NOTEBOOK) \
+		--ExecutePreprocessor.timeout=3600 --ExecutePreprocessor.kernel_name=python3 \
+		--output-dir results/notebook_smoke --output 01_full_paper_reproduction.executed.ipynb
 
 # ---------------------------------------------------------------- execução de experimentos
 # RESUME=1 retoma a execução mais recente com a mesma config (células concluídas são puladas).
