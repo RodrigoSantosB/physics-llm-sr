@@ -1,0 +1,8 @@
+### TASK
+Evaluate the candidate equation below using the metrics and output format defined in the instructions.
+
+### CANDIDATE EQUATION
+{{expression}}
+{{context_block}}
+### ANSWER
+Respond with ONLY the JSON object {"dimensional_consistency": float, "simplicity": float, "physical_realism": float, "feedback": str}.

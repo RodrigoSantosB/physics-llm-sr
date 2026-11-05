@@ -1,0 +1,12 @@
+id: D
+description: Ground-truth equation appended ("Formula at end")
+includes: [ground_truth]
+gt_disclosed: true
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: D "appended the GT equation" (Table 2: "Formula at end"). Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  ground_truth: |
+    ### REFERENCE EQUATION
+    The following is the reference (ground-truth) equation for this system:
+    {{ground_truth}}

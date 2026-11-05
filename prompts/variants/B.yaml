@@ -1,0 +1,11 @@
+id: B
+description: Variable descriptions only
+includes: [variables]
+gt_disclosed: false
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: B "included data-column descriptions only". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  variables: |
+    ### VARIABLE DESCRIPTIONS
+    {{variable_descriptions}}

@@ -1,0 +1,18 @@
+id: H
+description: Variables + experiment + ground truth ("kitchen-sink")
+includes: [variables, experiment, ground_truth]
+gt_disclosed: true
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: H "fused B, C, and D, creating a kitchen-sink template". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  variables: |
+    ### VARIABLE DESCRIPTIONS
+    {{variable_descriptions}}
+  experiment: |
+    ### EXPERIMENT DESCRIPTION
+    {{experiment_description}}
+  ground_truth: |
+    ### REFERENCE EQUATION
+    The following is the reference (ground-truth) equation for this system:
+    {{ground_truth}}
