@@ -1,0 +1,14 @@
+id: E
+description: Variable descriptions + experiment description (priority configuration, no GT disclosure)
+includes: [variables, experiment]
+gt_disclosed: false
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: E "merged B and C"; p.11 describes E as variable definitions with dimensions plus a detailed experiment description. Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  variables: |
+    ### VARIABLE DESCRIPTIONS
+    {{variable_descriptions}}
+  experiment: |
+    ### EXPERIMENT DESCRIPTION
+    {{experiment_description}}

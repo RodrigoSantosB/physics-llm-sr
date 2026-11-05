@@ -1,0 +1,9 @@
+id: A
+description: No additional context (baseline, "No context")
+includes: []
+gt_disclosed: false
+reconstructed: true
+source: >-
+  Taskin et al., Sci Rep 2026, 16:1614, p.7: A "provided no additional information, acting as a baseline". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  {}

@@ -1,0 +1,11 @@
+id: C
+description: Experiment description only
+includes: [experiment]
+gt_disclosed: false
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: C "added a concise, natural-language Experiment description". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  experiment: |
+    ### EXPERIMENT DESCRIPTION
+    {{experiment_description}}

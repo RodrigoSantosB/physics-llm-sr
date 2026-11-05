@@ -1,0 +1,15 @@
+id: F
+description: Variable descriptions + ground truth
+includes: [variables, ground_truth]
+gt_disclosed: true
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: F "merged B and D". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  variables: |
+    ### VARIABLE DESCRIPTIONS
+    {{variable_descriptions}}
+  ground_truth: |
+    ### REFERENCE EQUATION
+    The following is the reference (ground-truth) equation for this system:
+    {{ground_truth}}

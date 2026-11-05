@@ -1,0 +1,15 @@
+id: G
+description: Experiment description + ground truth
+includes: [experiment, ground_truth]
+gt_disclosed: true
+reconstructed: true
+source: >-
+  Taskin et al. 2026, p.7: G "merged C and D". Exact prompt strings are not in the paper or supplement (checked: supplement has only runtime and performance tables); wording reconstructed.
+sections:
+  experiment: |
+    ### EXPERIMENT DESCRIPTION
+    {{experiment_description}}
+  ground_truth: |
+    ### REFERENCE EQUATION
+    The following is the reference (ground-truth) equation for this system:
+    {{ground_truth}}
