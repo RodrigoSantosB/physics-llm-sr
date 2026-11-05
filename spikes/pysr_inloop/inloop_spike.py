@@ -1,3 +1,5 @@
+# ruff: noqa: D102, D103, D107, D403, E501, N806, N813, B905
+# (protótipo descartável do spike GAP-08, mantido como documentação)
 """Spike GAP-08: termo LLM (w3*c) DENTRO da seleção do PySR via callback Julia -> Python.
 
 Mecanismo: ``loss_function`` (objetivo completo em Julia, ``(tree, dataset, options) -> L``)
@@ -113,8 +115,8 @@ class Callback:
         self.calls = 0
         self.unique_text: set[str] = set()
         self.parse_errors: Counter[str] = Counter()
-        self.keys_3sig: set[str] = set()      # canonical_key com 3 algarismos significativos
-        self.keys_struct: set[str] = set()    # só estrutura (constantes mascaradas)
+        self.keys_3sig: set[str] = set()  # canonical_key com 3 algarismos significativos
+        self.keys_struct: set[str] = set()  # só estrutura (constantes mascaradas)
         self.seconds = 0.0
 
     def __call__(self, text: Any) -> float:
@@ -245,9 +247,16 @@ def run(
         e = float(np.mean(np.where(r <= 1.0, r**2 / 2, r - 0.5)))
         c_py = cb(eq)
         w1, w2, w3 = weights
-        hof_rows.append({"complexity": int(cpx), "loss": float(lo), "equation": eq,
-                         "e": round(e, 4), "c": round(c_py, 3),
-                         "L_recomputed": round(w1 * e + w2 * int(cpx) + w3 * (c_py if call_py else 0.0), 4)})
+        hof_rows.append(
+            {
+                "complexity": int(cpx),
+                "loss": float(lo),
+                "equation": eq,
+                "e": round(e, 4),
+                "c": round(c_py, 3),
+                "L_recomputed": round(w1 * e + w2 * int(cpx) + w3 * (c_py if call_py else 0.0), 4),
+            }
+        )
     cb.calls = calls_before
     return {
         "weights": weights,
@@ -266,18 +275,22 @@ def run(
         "best": best,
         "best_has_favored": bool(favored and re.search(rf"\b{favored}\(", best)),
         "hof_frac_favored": round(frac, 3),
-        "max_abs_loss_minus_recomputed": round(max(abs(h["loss"] - h["L_recomputed"]) for h in hof_rows), 4),
+        "max_abs_loss_minus_recomputed": round(
+            max(abs(h["loss"] - h["L_recomputed"]) for h in hof_rows), 4
+        ),
         "hof": hof_rows,
         **cb.stats(),
     }
 
 
 def summarize(r: dict[str, Any]) -> str:
-    return (f"w={tuple(round(w, 3) for w in r['weights'])} fav={r['favored']} callpy={r['call_py']} "
-            f"it={r['niterations']} | best={r['best']!r} has_fav={r['best_has_favored']} "
-            f"hof_frac={r['hof_frac_favored']} | calls={r['callback_calls']} uniq_str={r['unique_strings']} "
-            f"uniq_key={r['unique_canonical_keys']} k3={r['unique_keys_3sig']} struct={r['unique_structures']} hit={r['cache_hit_rate'] and round(r['cache_hit_rate'], 3)} "
-            f"parse_err={r['parse_errors']} audit={r['max_abs_loss_minus_recomputed']} | wall={r['wall_seconds']}s py={r['python_seconds']}s")
+    return (
+        f"w={tuple(round(w, 3) for w in r['weights'])} fav={r['favored']} callpy={r['call_py']} "
+        f"it={r['niterations']} | best={r['best']!r} has_fav={r['best_has_favored']} "
+        f"hof_frac={r['hof_frac_favored']} | calls={r['callback_calls']} uniq_str={r['unique_strings']} "
+        f"uniq_key={r['unique_canonical_keys']} k3={r['unique_keys_3sig']} struct={r['unique_structures']} hit={r['cache_hit_rate'] and round(r['cache_hit_rate'], 3)} "
+        f"parse_err={r['parse_errors']} audit={r['max_abs_loss_minus_recomputed']} | wall={r['wall_seconds']}s py={r['python_seconds']}s"
+    )
 
 
 def mode_influence() -> list[dict[str, Any]]:
@@ -286,13 +299,17 @@ def mode_influence() -> list[dict[str, Any]]:
     Prova GAP-08: com w3 = 0, trocar o avaliador (A <-> B) NÃO muda nada; com w3 > 0 muda.
     Repetição idêntica (A, w3>0) testa determinismo com o callback ativo.
     """
-    w0 = (0.5, 0.5, 0.0)            # baseline GAP-01
-    wp = (1 / 3, 1 / 3, 1 / 3)      # pilot.yaml
-    wbig = (1 / 3, 1 / 3, 5.0)      # w3 grande, para isolar o efeito
+    w0 = (0.5, 0.5, 0.0)  # baseline GAP-01
+    wp = (1 / 3, 1 / 3, 1 / 3)  # pilot.yaml
+    wbig = (1 / 3, 1 / 3, 5.0)  # w3 grande, para isolar o efeito
     cfgs = [
-        (w0, "cos"), (w0, None),
-        (wp, "cos"), (wp, None), (wp, "cos"),
-        (wbig, "cos"), (wbig, None),
+        (w0, "cos"),
+        (w0, None),
+        (wp, "cos"),
+        (wp, None),
+        (wp, "cos"),
+        (wbig, "cos"),
+        (wbig, None),
     ]
     out = []
     for w, fav in cfgs:
@@ -305,10 +322,16 @@ def mode_influence() -> list[dict[str, Any]]:
         print(f"[{kw}] " + summarize(r), flush=True)
         out.append(r)
     a, b = out[0], out[1]
-    print("w3=0: HoF idêntico entre avaliadores A/B:", a["hof"] == b["hof"] or
-          [h["equation"] for h in a["hof"]] == [h["equation"] for h in b["hof"]])
-    print("determinismo (A, w3=1/3, 2x):", [h["equation"] for h in out[2]["hof"]] ==
-          [h["equation"] for h in out[4]["hof"]] and out[2]["callback_calls"] == out[4]["callback_calls"])
+    print(
+        "w3=0: HoF idêntico entre avaliadores A/B:",
+        a["hof"] == b["hof"]
+        or [h["equation"] for h in a["hof"]] == [h["equation"] for h in b["hof"]],
+    )
+    print(
+        "determinismo (A, w3=1/3, 2x):",
+        [h["equation"] for h in out[2]["hof"]] == [h["equation"] for h in out[4]["hof"]]
+        and out[2]["callback_calls"] == out[4]["callback_calls"],
+    )
     return out
 
 
@@ -324,21 +347,33 @@ def mode_cost() -> list[dict[str, Any]]:
         print("[sem otimização de constantes] " + summarize(r), flush=True)
         out.append(r)
     # Escala da hipótese GAP-08: populations=1, population_size=100
-    r = run(weights=(1 / 3, 1 / 3, 1 / 3), favored="cos", niterations=1, populations=1,
-            population_size=100)
+    r = run(
+        weights=(1 / 3, 1 / 3, 1 / 3),
+        favored="cos",
+        niterations=1,
+        populations=1,
+        population_size=100,
+    )
     print("[pop 1x100] " + summarize(r), flush=True)
     out.append(r)
     for ncyc in (50, 100):
-        r = run(weights=(1 / 3, 1 / 3, 1 / 3), favored="cos", niterations=1, populations=1,
-                population_size=100, ncycles_per_iteration=ncyc)
+        r = run(
+            weights=(1 / 3, 1 / 3, 1 / 3),
+            favored="cos",
+            niterations=1,
+            populations=1,
+            population_size=100,
+            ncycles_per_iteration=ncyc,
+        )
         print(f"[pop 1x100, ncycles_per_iteration={ncyc}] " + summarize(r), flush=True)
         out.append(r)
     return out
 
 
 def mode_threads() -> list[dict[str, Any]]:
-    r = run(weights=(1 / 3, 1 / 3, 1 / 3), favored="cos", parallelism="multithreading",
-            niterations=2)
+    r = run(
+        weights=(1 / 3, 1 / 3, 1 / 3), favored="cos", parallelism="multithreading", niterations=2
+    )
     print(summarize(r), flush=True)
     return [r]
 
