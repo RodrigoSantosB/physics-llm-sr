@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+.coverage
+# Dados e resultados gerados (mantém apenas .gitkeep)
+data/raw/*
+data/processed/*
+results/*
+!.gitkeep
+# Cache de LLM e julia
+.cache/
+*.log
