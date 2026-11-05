@@ -327,14 +327,17 @@ def login_huggingface() -> bool:
     return True
 
 
-def environment_report() -> dict[str, Any]:
-    """Versões e hardware para a etapa 01 (sem segredos)."""
+def environment_report(include_cuda: bool = True) -> dict[str, Any]:
+    """Versões e hardware para a etapa 01 (sem segredos).
+
+    ``include_cuda=False`` não importa o torch (notebook 01, sem LLM): ``cuda_disponível = None``.
+    """
     from physics_llm_sr.reproducibility.manifests import hardware_info
 
     versions = library_versions(TRACKED_LIBRARIES)
     versions["physics-llm-sr"] = _version("physics-llm-sr")
     cuda: bool | None = None
-    if importlib.util.find_spec("torch") is not None:
+    if include_cuda and importlib.util.find_spec("torch") is not None:
         import torch
 
         cuda = bool(torch.cuda.is_available())
@@ -398,6 +401,12 @@ def stage_allowed(cfg: ExperimentConfig, experiments: Iterable[str]) -> list[str
     wanted = resolve_experiments(list(experiments), cfg)
     allowed = set(cfg.experiments.run) | set(CORE_EXPERIMENTS)
     return [name for name in wanted if name in allowed]
+
+
+def ensure_project_root() -> Path:
+    """Raiz de projeto (``PHYSICS_LLM_SR_PROJECT_ROOT``; default: raiz do repositório)."""
+    os.environ.setdefault(PROJECT_ROOT_ENV, str(find_repo_root()))
+    return Path(os.environ[PROJECT_ROOT_ENV]).expanduser().resolve()
 
 
 def resolve_stage(
@@ -498,6 +507,8 @@ def plan_table(cfg: ExperimentConfig) -> pd.DataFrame:
     for name in cfg.experiments.run:
         counts: dict[str, int] = {}
         for cell in EXPERIMENTS[name](cfg):
+            if cfg.experiments.baseline_only and not cell.is_baseline:
+                continue
             counts[cell.llm] = counts.get(cell.llm, 0) + 1
         # contagem BRUTA por experimento (o baseline pareado se repete entre experimentos)
         by_model = {f"modelo:{m}": n for m, n in sorted(counts.items())}
@@ -631,6 +642,7 @@ def estimate_runtime(
 
 DERIVED_DIR = "configs_derivadas"
 HASH_LENGTH = 10
+OUTPUT_LAYOUTS = ("suffix", "subdir")
 ARM_TRACKS = {
     "replication": {"track": "paper_replication", "normalization": "literal"},
     "extended": {"track": "extended_analysis", "normalization": "normalized"},
@@ -722,9 +734,16 @@ def build_run_config(
     repetitions: int | None = None,
     prompts: Sequence[str] | None = None,
     noise_levels: Sequence[float] | None = None,
+    noise_locations: Sequence[str] | None = None,
     arm: str | None = None,
     out_dir: str | Path,
     repo_dir: str | Path | None = None,
+    patch: Mapping[str, Any] | None = None,
+    output_dir: str | None = None,
+    output_layout: str = "suffix",
+    output_prefix: str = "",
+    derived_dir_name: str = DERIVED_DIR,
+    smoke: bool = False,
 ) -> Path:
     """Config derivada de um preset (ou arquivo de ``configs/``) com sobrescritas validadas.
 
@@ -735,6 +754,13 @@ def build_run_config(
     do schema) e gravada em ``<out_dir>/configs_derivadas/<hash>.yaml``. O hash cobre o
     conteúdo derivado: se houve sobrescrita, ``output_dir`` ganha o sufixo ``_<hash>`` para que
     execuções diferentes nunca se misturem; sem sobrescritas, vale o ``output_dir`` do base.
+
+    Extras dos notebooks: ``patch`` (atualização profunda aplicada ao base, sem efeito no
+    diretório de resultados), ``noise_locations`` (Exp4 e Exp5), ``output_dir`` (substitui o
+    base), ``output_prefix`` (insere ``<prefixo>`` após ``results/``, p.ex. ``nb03_``),
+    ``output_layout`` (``"suffix"``: ``<base>_<hash>`` só com sobrescrita; ``"subdir"``:
+    sempre ``<base>/<hash>``), ``derived_dir_name`` (subpasta da config derivada) e ``smoke``
+    (tamanhos mínimos, backend simulado, sem PySR: :func:`_apply_smoke`).
     Só composição de config: nenhuma lógica científica.
     """
     import hashlib
@@ -753,6 +779,12 @@ def build_run_config(
         _deep_update(data, preset.patch)
         if models is None and preset.models is not None:
             models = preset.models
+    if patch:
+        _deep_update(data, patch)
+    if output_dir is not None:
+        data["output_dir"] = output_dir
+    if output_prefix:
+        data["output_dir"] = data["output_dir"].replace("results/", f"results/{output_prefix}", 1)
     base_output = data["output_dir"]
     overridden = False
 
@@ -788,15 +820,262 @@ def build_run_config(
     if noise_levels is not None:
         _set(("data", "exp4", "levels"), list(noise_levels))
         _set(("data", "exp5", "levels"), list(noise_levels))
+    if noise_locations is not None:
+        _set(("data", "exp4", "locations"), list(noise_locations))
+        _set(("data", "exp5", "locations"), list(noise_locations))
+    if smoke:
+        _apply_smoke(data)
+        overridden = True
     digest = hashlib.sha256(
         json.dumps({**data, "output_dir": base_output}, sort_keys=True).encode()
     ).hexdigest()[:HASH_LENGTH]
-    if overridden:
+    if output_layout not in OUTPUT_LAYOUTS:
+        raise ValueError(f"output_layout inválido: {output_layout!r}; válidos: {OUTPUT_LAYOUTS}")
+    if output_layout == "subdir":
+        data["output_dir"] = f"{base_output}/{digest}"
+    elif overridden:
         data["output_dir"] = f"{base_output}_{digest}"
     parse_config(data)  # valida: ConfigError traz o campo e o motivo
-    target_dir = Path(out_dir).expanduser() / DERIVED_DIR
+    target_dir = Path(out_dir).expanduser() / derived_dir_name
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / f"{digest}.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     load_config(path)
     return path
+
+
+# ------------------------------------------------------------------ notebooks 01 e 02
+NOTEBOOK_SMOKE_ENV = "PHYSICS_LLM_SR_NOTEBOOK_SMOKE"
+NB01_CONFIG = "nb01_baseline.yaml"
+NB02_CONFIG = "nb02_um_llm.yaml"
+NB01_OUTPUT = "results/nb01_baseline"
+NB01_EXPERIMENTS = ("exp1", "exp4", "exp5")  # Exp1 + células baseline de Exp4 e Exp5
+#: ``BRACO`` dos notebooks -> braço de :data:`ARM_TRACKS`.
+NB_BRACOS = {"literal": "replication", "normalized": "extended"}
+#: ``EXPERIMENTO`` do notebook 02 -> alias do runner.
+NB02_EXPERIMENTS = {
+    "benchmark": "exp2",
+    "prompts": "exp3",
+    "ruido": "exp4",
+    "ruido_enviesado": "exp5",
+}
+NB_SCENARIOS = ("free_fall", "harmonic_motion", "damped_wave")
+NB_ALGORITHMS = ("deap", "gplearn", "pysr")
+NB_LLMS = ("mistral", "llama2", "falcon")
+NB_PROMPTS = tuple("ABCDEFGH")
+NB_NOISE_LOCATIONS = ("inputs", "target", "both")
+#: Reduções do modo smoke (``make notebook-smoke``): minutos, sem LLM real e sem Julia.
+SMOKE_NB_REPETITIONS = 2
+SMOKE_NB_SIMULATIONS = 5
+SMOKE_NB_TIME_POINTS = 20
+SMOKE_NB_POPULATION = 10
+SMOKE_NB_GENERATIONS = 3
+SMOKE_NB_NOISE_LEVELS = 2
+SMOKE_NB_CACHE_DIR_SUFFIX = "_smoke"
+
+
+class NotebookParameterError(ValueError):
+    """Parâmetro de notebook inválido (mensagem em português, antes de qualquer execução)."""
+
+
+def smoke_requested() -> bool:
+    """Indica se ``PHYSICS_LLM_SR_NOTEBOOK_SMOKE`` pede o modo smoke dos notebooks."""
+    return os.environ.get(NOTEBOOK_SMOKE_ENV, "").strip().lower() in {"1", "true", "yes", "sim"}
+
+
+def _apply_smoke(data: dict[str, Any]) -> None:
+    """Reduz a config (dict) a tamanhos mínimos, backend simulado e sem PySR (Julia)."""
+    ex = data["experiments"]
+    data["mode"] = "smoke"
+    data["data"].update(n_simulations=SMOKE_NB_SIMULATIONS, n_time_points=SMOKE_NB_TIME_POINTS)
+    data["sr"].update(population=SMOKE_NB_POPULATION, generations=SMOKE_NB_GENERATIONS)
+    ex["repetitions"] = min(ex["repetitions"], SMOKE_NB_REPETITIONS)
+    ex["algorithms"] = [a for a in ex["algorithms"] if a != "pysr"] or ["deap"]
+    ex["max_cell_seconds"] = None
+    for exp in ("exp4", "exp5"):
+        data["data"][exp]["levels"] = data["data"][exp]["levels"][:SMOKE_NB_NOISE_LEVELS]
+    llm = data["llm"]
+    llm.update(backend="fake", batch_size=1, max_new_tokens=64)
+    llm["cache_dir"] = f"{llm['cache_dir']}{SMOKE_NB_CACHE_DIR_SUFFIX}"
+    for model in llm["models"]:
+        model.update(revision=None, quantization=None, infra="local")
+
+
+def _check_choice(name: str, value: object, valid: Sequence[str]) -> None:
+    if not isinstance(value, str) or value not in valid:
+        raise NotebookParameterError(f"{name} inválido: {value!r}; use um de {tuple(valid)}")
+
+
+def _check_list(name: str, values: object, valid: Sequence[str]) -> list[str]:
+    if isinstance(values, str) or not isinstance(values, Sequence) or not values:
+        raise NotebookParameterError(f"{name} deve ser uma lista não vazia de {tuple(valid)}")
+    for value in values:
+        _check_choice(name, value, valid)
+    return list(values)
+
+
+def _check_common(
+    algorithms: object,
+    repetitions: object,
+    noise_levels: object,
+    noise_locations: object,
+    braco: object,
+) -> list[str]:
+    algos = _check_list("ALGORITMOS", algorithms, NB_ALGORITHMS)
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions < 1:
+        raise NotebookParameterError(f"REPETICOES deve ser um inteiro >= 1, não {repetitions!r}")
+    if (
+        isinstance(noise_levels, str)
+        or not isinstance(noise_levels, Sequence)
+        or not noise_levels
+        or any(
+            isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0 for v in noise_levels
+        )
+    ):
+        raise NotebookParameterError(
+            f"NIVEIS_RUIDO deve ser uma lista de números > 0 (fração do desvio-padrão), "
+            f"não {noise_levels!r}"
+        )
+    _check_list("LOCALIZACOES", noise_locations, NB_NOISE_LOCATIONS)
+    _check_choice("BRACO", braco, tuple(NB_BRACOS))
+    return algos
+
+
+def build_baseline_config(
+    *,
+    scenarios: Sequence[str],
+    algorithms: Sequence[str],
+    repetitions: int,
+    noise_levels: Sequence[float],
+    noise_locations: Sequence[str],
+    braco: str,
+    out_dir: str | Path,
+    smoke: bool = False,
+    repo_dir: str | Path | None = None,
+) -> Path:
+    """Config derivada do notebook 01 (baseline sem LLM), validada antes de rodar.
+
+    Parte de ``configs/nb01_baseline.yaml`` (``baseline_only``: nenhuma célula com LLM). Os
+    parâmetros em português são validados (:class:`NotebookParameterError`) e o resultado
+    passa pelo schema. Saída: ``results/nb01_baseline/<hash>``; config em
+    ``<out_dir>/configs_derivadas/nb01/<hash>.yaml``.
+    """
+    scen = _check_list("CENARIOS", scenarios, NB_SCENARIOS)
+    algos = _check_common(algorithms, repetitions, noise_levels, noise_locations, braco)
+    return build_run_config(
+        NB01_CONFIG,
+        scenarios=scen,
+        algorithms=algos,
+        repetitions=repetitions,
+        noise_levels=list(noise_levels),
+        noise_locations=list(noise_locations),
+        arm=NB_BRACOS[braco],
+        out_dir=out_dir,
+        repo_dir=repo_dir,
+        output_layout="subdir",
+        derived_dir_name=f"{DERIVED_DIR}/nb01",
+        smoke=smoke,
+    )
+
+
+def build_single_llm_config(
+    *,
+    scenario: str,
+    experiment: str,
+    llm: str,
+    algorithms: Sequence[str],
+    repetitions: int,
+    prompt: str,
+    prompts: Sequence[str],
+    braco: str,
+    noise_levels: Sequence[float],
+    noise_locations: Sequence[str],
+    out_dir: str | Path,
+    smoke: bool = False,
+    repo_dir: str | Path | None = None,
+) -> Path:
+    """Config derivada do notebook 02 (um LLM, um cenário, um experimento).
+
+    ``experiment``: ``benchmark`` (Exp2), ``prompts`` (Exp3, usa ``prompts``), ``ruido``
+    (Exp4) ou ``ruido_enviesado`` (Exp5); ``prompt`` vale para Exp2, Exp4 e Exp5. Validação em
+    português (:class:`NotebookParameterError`) antes de rodar; o Llama 2 exige ``HF_TOKEN``
+    (verificado por :func:`ensure_hf_access` com a config resultante). Saída:
+    ``results/nb02_<cenario>_<experimento>_<llm>/<hash>``.
+    """
+    _check_choice("CENARIO", scenario, NB_SCENARIOS)
+    _check_choice("EXPERIMENTO", experiment, tuple(NB02_EXPERIMENTS))
+    _check_choice("LLM", llm, NB_LLMS)
+    _check_choice("PROMPT", prompt, NB_PROMPTS)
+    algos = _check_common(algorithms, repetitions, noise_levels, noise_locations, braco)
+    chosen_prompts = _check_list("PROMPTS", prompts, NB_PROMPTS)
+    base = {"benchmark_prompt": prompt, "noise_prompt": prompt}
+    return build_run_config(
+        NB02_CONFIG,
+        models=[llm],
+        scenarios=[scenario],
+        experiments=[NB02_EXPERIMENTS[experiment]],
+        algorithms=algos,
+        repetitions=repetitions,
+        prompts=chosen_prompts if experiment == "prompts" else [prompt],
+        noise_levels=list(noise_levels),
+        noise_locations=list(noise_locations),
+        arm=NB_BRACOS[braco],
+        out_dir=out_dir,
+        repo_dir=repo_dir,
+        patch={"experiments": base},
+        output_dir=f"results/nb02_{scenario}_{experiment}_{llm}",
+        output_layout="subdir",
+        derived_dir_name=f"{DERIVED_DIR}/nb02",
+        smoke=smoke,
+    )
+
+
+#: HIPÓTESES de segundos por célula baseline em CPU (a medir; PySR inclui a partida do Julia).
+DEFAULT_CPU_SECONDS_PER_CELL: dict[str, float] = {"deap": 10.0, "gplearn": 20.0, "pysr": 120.0}
+
+
+def estimate_cpu_runtime(
+    cfg: ExperimentConfig, seconds_per_cell: Mapping[str, float] | None = None
+) -> pd.DataFrame:
+    """Tempo projetado em CPU por algoritmo para a matriz da config (notebook 01).
+
+    ``seconds_per_cell`` sobrescreve :data:`DEFAULT_CPU_SECONDS_PER_CELL` (hipóteses). Cada
+    célula é limitada por ``experiments.max_cell_seconds`` quando definido.
+    """
+    from physics_llm_sr.experiments.matrix import build_matrix
+
+    per_cell = {
+        **DEFAULT_CPU_SECONDS_PER_CELL,
+        **(dict(seconds_per_cell) if seconds_per_cell else {}),
+    }
+    cap = cfg.experiments.max_cell_seconds
+    counts: dict[str, int] = {}
+    for planned in build_matrix(cfg):
+        counts[planned.cell.sr] = counts.get(planned.cell.sr, 0) + 1
+    rows = []
+    for sr in cfg.experiments.algorithms:
+        each = per_cell[sr] if cap is None else min(per_cell[sr], cap)
+        n = counts.get(sr, 0)
+        rows.append(
+            {
+                "sr": sr,
+                "cells": n,
+                "seconds_per_cell": each,
+                "seconds": n * each,
+                "hours": n * each / SECONDS_PER_HOUR,
+            }
+        )
+    out: pd.DataFrame = pd.DataFrame(rows)
+    return out
+
+
+def require_gpu(cfg: ExperimentConfig) -> None:
+    """Exige GPU para o backend ``transformers`` (7B em fp16 não roda em CPU): erro claro."""
+    if cfg.llm.backend != "transformers":
+        return
+    if not environment_report()["cuda_disponível"]:
+        raise RuntimeError(
+            "o backend transformers (7B em fp16) exige GPU: no Colab use Ambiente de execução > "
+            "Alterar tipo > GPU A100 (High-RAM) e reinicie. Para validar só o encanamento, use o "
+            "modo smoke (PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1)."
+        )

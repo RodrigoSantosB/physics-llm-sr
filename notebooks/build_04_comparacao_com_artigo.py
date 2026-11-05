@@ -1,4 +1,4 @@
-"""Gera ``02_paper_comparison.ipynb`` (``uv run python notebooks/build_paper_comparison.py``).
+"""Gera ``04_comparacao_com_artigo.ipynb`` (``uv run python notebooks/build_04_comparacao_com_artigo.py``).
 
 O .ipynb versionado é a saída deste script. Células só chamam ``physics_llm_sr.analysis``.
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import nbformat
 
-NOTEBOOK = Path(__file__).resolve().parent / "02_paper_comparison.ipynb"
+NOTEBOOK = Path(__file__).resolve().parent / "04_comparacao_com_artigo.ipynb"
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 CELLS: list[tuple[str, str]] = []
 

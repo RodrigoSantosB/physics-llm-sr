@@ -1,4 +1,4 @@
-"""Gera ``01_full_paper_reproduction.ipynb`` (``uv run python notebooks/build_notebook.py``).
+"""Gera ``03_pipeline_completo.ipynb`` (``uv run python notebooks/build_03_pipeline_completo.py``).
 
 O .ipynb versionado é a saída deste script; edite as células aqui e regenere. Os IDs das
 células são determinísticos (hash do índice e do conteúdo) para que o diff seja estável.
@@ -8,11 +8,15 @@ O teste ``tests/e2e/test_notebook.py`` confere que o arquivo corresponde ao gera
 from __future__ import annotations
 
 import hashlib
+import sys
 from pathlib import Path
 
 import nbformat
 
-NOTEBOOK = Path(__file__).resolve().parent / "01_full_paper_reproduction.ipynb"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from nb_common import format_code  # noqa: E402
+
+NOTEBOOK = Path(__file__).resolve().parent / "03_pipeline_completo.ipynb"
 NBFORMAT_MINOR = 5
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 
@@ -25,8 +29,8 @@ def md(text: str) -> None:
 
 
 def code(text: str) -> None:
-    """Acrescenta uma célula de código."""
-    CELLS.append(("code", text.strip("\n")))
+    """Acrescenta uma célula de código (formatada com ruff, como o repositório formata os .ipynb)."""
+    CELLS.append(("code", format_code(text.strip("\n"))))
 
 
 def build() -> nbformat.NotebookNode:
@@ -51,9 +55,11 @@ def main() -> None:
 
 
 md(r"""
-# Reprodução de regressão simbólica informada por física com LLMs
+# Reprodução de regressão simbólica informada por física com LLMs: pipeline completo
 
-Notebook principal do projeto `physics-llm-sr`: percorre as etapas 00 a 18 (PRD, seção 10). Cada etapa tem
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/03_pipeline_completo.ipynb)
+
+**Notebook 03 de 4** do projeto `physics-llm-sr` (os outros: 01 baseline sem LLM, 02 um LLM em um caso, 04 comparação com o artigo). É independente dos demais: tem a própria célula de preparo, grava em `<PROJECT_ROOT>/results/nb03_...` (e `configs_derivadas/nb03`, cache `.cache/llm_nb03`) e não lê saídas de outros notebooks. Percorre as etapas 00 a 18 (PRD, seção 10). Cada etapa tem
 quatro componentes: **1. Explicação teórica**, **2. Referência ao artigo**, **3. Chamada ao módulo** e
 **4. Visualização e interpretação**.
 
@@ -71,7 +77,7 @@ md(r"""
 ### Parâmetros
 
 - `PRESET`: `"hoje"` (padrão: queda livre no Colab A100, Mistral, ~4 h, etapas P1 a P4), `"hoje_literal"`, `"3_modelos_queda_livre"`, `"completo"` (artigo inteiro, dias de GPU), `"completo_extended"` ou `"smoke"` (minutos, avaliador simulado). Os braços literal e extended nunca se misturam nas tabelas de reprodução.
-- `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`: sobrescrevem o preset quando não são `None`. A configuração derivada é validada pelo schema e gravada em `<PROJECT_ROOT>/configs_derivadas/<hash>.yaml`; com sobrescritas, o diretório de resultados ganha o sufixo do hash (retomada correta, sem misturar execuções). Llama 2 é restrito: exige o segredo `HF_TOKEN` do Colab.
+- `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`: sobrescrevem o preset quando não são `None`. A configuração derivada é validada pelo schema e gravada em `<PROJECT_ROOT>/configs_derivadas/nb03/<hash>.yaml`; com sobrescritas, o diretório de resultados ganha o sufixo do hash (retomada correta, sem misturar execuções). Llama 2 é restrito: exige o segredo `HF_TOKEN` do Colab.
 - `LOAD_EXISTING_RUN` (opcional, vazio por padrão): caminho de um `run_dir` já gerado (por exemplo, o do piloto). Com ele, as etapas só **apresentam** os resultados existentes, sem executar nada.
 - `REPO_URL`, `REPO_DIR`, `MOUNT_DRIVE`, `DRIVE_PROJECT_DIR`, `HF_HOME_DIR`: usados só no Colab. A **primeira célula de código** é autossuficiente: monta o Drive, clona (se `REPO_URL`), verifica `REPO_DIR` (erro claro se faltar), instala o pacote e só então a etapa 01 importa `physics_llm_sr`. `HF_HOME_DIR` (padrão `/content/hf_home`, disco local) guarda os pesos (cerca de 15 GB por modelo) e sobrescreve `HF_HOME`; Drive só com ≥ 20 GB livres por modelo (não recomendado: trunca os pesos e causa `header too large`). Se `transformers`/`huggingface_hub` já foi importado com outro `HF_HOME`, reinicie o ambiente.
 """)
@@ -90,7 +96,7 @@ PRESET = _os.environ.get("PHYSICS_LLM_SR_NOTEBOOK_PRESET", "hoje")
 # "completo_extended"     idem, braço extended (perda normalizada)
 # "smoke"                 validação mínima, sem LLM real (minutos)
 MODELOS = None  # None = do preset; ex.: ["mistral"], ["mistral", "llama2"], ["mistral", "llama2", "falcon"]
-CENARIOS = None  # None = do preset; ex.: ["free_fall"], ["free_fall", "harmonic_motion", "damped_wave"]
+CENARIOS = None  # None = do preset; ex.: ["free_fall"], ["free_fall", "harmonic_motion"]
 EXPERIMENTOS = None  # None = do preset; ex.: ["exp1","exp2"], ["exp1","exp2","exp3","exp4","exp5"]
 ALGORITMOS = None  # ex.: ["deap","gplearn","pysr"]
 REPETICOES = None  # ex.: 3 (hoje) | 25 (artigo)
@@ -258,6 +264,9 @@ CONFIG_PATH = colab.build_run_config(
     repetitions=REPETICOES,
     prompts=PROMPTS,
     out_dir=project_root(),
+    output_prefix="nb03_",  # resultados em results/nb03_...: não colide com os notebooks 01 e 02
+    derived_dir_name="configs_derivadas/nb03",
+    patch={"llm": {"cache_dir": ".cache/llm_nb03"}},  # cache de avaliações só deste notebook
 )
 cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 print("configuração derivada:", CONFIG_PATH)
@@ -1662,12 +1671,12 @@ from physics_llm_sr.config.paths import project_root
 
 ROOT = project_root()
 runs = [RUN_DIR]
-literal = ROOT / "results" / "colab_hoje_queda_livre_literal" / colab.NOTEBOOK_RUN_NAME
+literal = ROOT / "results" / "nb03_colab_hoje_queda_livre_literal" / colab.NOTEBOOK_RUN_NAME
 if PRESET == "hoje" and (literal / "run.json").is_file():
     runs.append(literal)
 TAG = {"hoje": "colab_hoje", "smoke": "smoke"}.get(PRESET, RUN_DIR.parent.name)
-ANALYSIS_DIR = ROOT / "results" / f"analise_{TAG}"
-LEGACY_DIR = ROOT / "results" / f"legado_{TAG}"
+ANALYSIS_DIR = ROOT / "results" / f"nb03_analise_{TAG}"
+LEGACY_DIR = ROOT / "results" / f"nb03_legado_{TAG}"
 run_args = [str(r) for r in runs]
 subprocess.run(
     [sys.executable, "-m", "physics_llm_sr.analysis", "--runs", *run_args, "--out", str(ANALYSIS_DIR)],
@@ -1691,7 +1700,7 @@ md(r"""
 2. **Segredo:** em *Segredos* (ícone de chave) crie `HF_TOKEN` com "Acesso ao notebook" ligado; aceite antes a licença do Llama 2 no Hugging Face.
 3. **Parâmetros:** na primeira célula (o padrão `PRESET = "hoje"` já serve; veja o README, "Escolhendo o que rodar"; `REPO_URL` já aponta para o GitHub). Os pesos dos modelos ocupam cerca de 40 GB: `HF_HOME_DIR` (padrão `<DRIVE_PROJECT_DIR>/hf_home`) precisa dessa folga no Drive.
 4. **Executar** as etapas em ordem (Ambiente de execução, Executar tudo). Estimativas do `colab_pilot` (a medir, não garantidas): cerca de 45 min com lote, cerca de 5 h sem lote, mais o PySR (0,5 a 3 h por treino com LLM; `experiments.max_cell_seconds` limita cada célula).
-5. **Onde ficam os resultados:** `<DRIVE_PROJECT_DIR>/results/colab_pilot/notebook_run/` (`results.parquet`, `manifest.json`, `figures/`) e o cache do LLM em `<DRIVE_PROJECT_DIR>/.cache/llm`.
+5. **Onde ficam os resultados:** `<DRIVE_PROJECT_DIR>/results/nb03_<config>/notebook_run/` (`results.parquet`, `manifest.json`, `figures/`; no preset `hoje`: `nb03_colab_hoje_queda_livre`) e o cache do LLM em `<DRIVE_PROJECT_DIR>/.cache/llm_nb03`.
 6. **Retomar após desconexão:** abra o notebook, repita os parâmetros e execute de novo a primeira célula e as etapas; o runner pula as células já concluídas e recarrega os resultados do Drive.
 7. **Baixar os resultados:** pelo Drive (pasta acima) ou compactando `notebook_run/` numa célula extra (`shutil.make_archive`) e baixando com `google.colab.files.download`.
 """)

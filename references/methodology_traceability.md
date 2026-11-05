@@ -19,7 +19,7 @@ correspondência direta no artigo. Os GAPs estão em `references/scientific_assu
 | R8 | Adaptadores DEAP, gplearn e PySR com LLM na seleção | T:baseline-sr, T:inloop-deap, T:inloop-gplearn, T:inloop-pysr |
 | R9 | Métricas, estatística e comparação com o artigo | T:metricas, T:comparacao |
 | R10 | Runner dos experimentos 1–7, modos smoke/pilot/full, retomada | T:runner, T:retomada, T:e2e, T:piloto |
-| R11 | Notebook 01_full_paper_reproduction (etapas 00–18) | T:notebook |
+| R11 | Notebooks 01_baseline_sem_llm, 02_um_llm_um_caso e 03_pipeline_completo (etapas 00–18) | T:notebook |
 | R12 | Auditoria metodológica (este diretório) | T:docs |
 | R13 | Execução no Google Colab (A100) com backend transformers | T:colab, T:llm-hf, T:llm-hf-neg |
 
@@ -40,7 +40,7 @@ correspondência direta no artigo. Os GAPs estão em `references/scientific_assu
 | Idem, ruído padrão (p.6) | Gaussiano de média zero, 1% da variabilidade, cerca de 40 dB | R3 | `src/physics_llm_sr/data/noise.py` | T:ruido | GAP-12 |
 | Não informado (PRD §3.3) | Split por simulação, sem vazamento | R3 | `src/physics_llm_sr/data/splitting.py` | T:split | GAP-09 |
 | Large language models (p.6) | Mistral 7B, Llama 2 7B, Falcon 7B, temperatura 0, uso local | R6, R13 | `src/physics_llm_sr/llm/inference.py`, `src/physics_llm_sr/llm/interfaces.py` | T:llm-real, T:llm-hf, T:llm-hf-neg | GAP-07 |
-| p.11 e S1 (Apêndice) | Execução em Google Colab Premium | R13 | `notebooks/01_full_paper_reproduction.ipynb`, `configs/colab_pilot.yaml` | T:colab | GAP-07, GAP-14 |
+| p.11 e S1 (Apêndice) | Execução em Google Colab Premium | R13 | `notebooks/03_pipeline_completo.ipynb`, `configs/colab_pilot.yaml` | T:colab | GAP-07, GAP-14 |
 | Symbolic regression models (p.6) e Tabela 1 (p.7) | Pop. 100, 50 gerações; DEAP cx 0.05, mut 0.01, torneio 3, prof. 8; Huber no PySR; parcimônia | R8 | `src/physics_llm_sr/sr/interfaces.py`, `src/physics_llm_sr/sr/deap_adapter.py`, `src/physics_llm_sr/sr/gplearn_adapter.py`, `src/physics_llm_sr/sr/pysr_adapter.py` | T:baseline-sr | GAP-05, H-02, H-03 |
 | Idem, operadores (p.6, Tabela 1) | `+ − × ÷ exp log sin cos`; `neg`, `^`, divisão protegida | R4 | `src/physics_llm_sr/symbolic/operators.py` | T:operadores | GAP-06, INC-05 |
 | Idem, parada antecipada (p.6) | Melhoria < 0.1% em três gerações | R7 | `src/physics_llm_sr/optimization/early_stopping.py`, `src/physics_llm_sr/optimization/search_history.py` | T:early-stop | H-01 |
@@ -58,7 +58,7 @@ correspondência direta no artigo. Os GAPs estão em `references/scientific_assu
 | PRD §11 | Manifesto, hashes, sementes, versões | R1 | `src/physics_llm_sr/reproducibility/manifests.py`, `src/physics_llm_sr/reproducibility/seeds.py`, `src/physics_llm_sr/reproducibility/artifacts.py` | T:manifest | GAP-09 |
 | PRD §2, §17 | Config tipada, modos e qualidade | R1 | `src/physics_llm_sr/config/schemas.py`, `src/physics_llm_sr/config/loader.py`, `Makefile`, `pyproject.toml` | T:config, T:make-check | — |
 | PRD §12.4 | Pipeline mínimo de ponta a ponta | R10 | `src/physics_llm_sr/experiments/runner.py` | T:e2e | — |
-| PRD §10 | Notebook com etapas 00–18 | R11 | `notebooks/01_full_paper_reproduction.ipynb` | T:notebook | — |
+| PRD §10 | Notebook com etapas 00–18 | R11 | `notebooks/03_pipeline_completo.ipynb` | T:notebook | — |
 
 ## Matriz de experimentos
 

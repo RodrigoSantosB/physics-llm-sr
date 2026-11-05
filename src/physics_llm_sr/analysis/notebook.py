@@ -1,5 +1,5 @@
 # mypy: disable-error-code="no-any-return,unused-ignore,no-untyped-call"
-"""Auxiliares de exibição para ``notebooks/02_paper_comparison.ipynb`` (sem lógica científica)."""
+"""Auxiliares de exibição do notebook 04 (comparação com o artigo; sem lógica científica)."""
 
 from __future__ import annotations
 

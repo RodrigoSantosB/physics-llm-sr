@@ -35,6 +35,7 @@ ALIASES = {
     "exp4": noise_robustness.NAME,
     "exp5": biased_noise.NAME,
 }
+ARMS = ("baseline", "llm")
 DERIVED = {"exp6": "comparação estrutural (métricas de cada célula)", "exp7": "use `report`"}
 
 
@@ -66,8 +67,17 @@ def build_matrix(
     cfg: ExperimentConfig,
     only: Iterable[str] | None = None,
     algorithms: Sequence[str] | None = None,
+    arm: str | None = None,
 ) -> list[PlannedCell]:
-    """Matriz deduplicada na ordem de execução (:meth:`Cell.sort_key`: por LLM primeiro)."""
+    """Matriz deduplicada na ordem de execução (:meth:`Cell.sort_key`: por LLM primeiro).
+
+    ``arm`` restringe a ``"baseline"`` (sem LLM) ou ``"llm"``; ``experiments.baseline_only``
+    da config equivale a ``arm="baseline"`` sempre.
+    """
+    if arm is not None and arm not in ARMS:
+        raise ValueError(f"arm inválido: {arm!r}; válidos: {ARMS}")
+    if cfg.experiments.baseline_only:
+        arm = "baseline"
     exps = resolve_experiments(only, cfg)
     if algorithms is not None:
         unknown = sorted(set(algorithms) - set(cfg.experiments.algorithms))
@@ -77,6 +87,8 @@ def build_matrix(
     for exp in exps:
         for cell in EXPERIMENTS[exp](cfg):
             if algorithms is not None and cell.sr not in algorithms:
+                continue
+            if arm is not None and cell.is_baseline != (arm == "baseline"):
                 continue
             entry = by_key.setdefault(cell.key(), (cell, []))
             if exp not in entry[1]:
