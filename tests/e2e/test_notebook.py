@@ -150,7 +150,7 @@ def test_first_setup_cell_is_self_contained_and_ordered() -> None:
     order = [src.index(token) for token in tokens]
     assert order == sorted(order), order
     assert "raise FileNotFoundError" in src and "REPO_URL" in src
-    assert re.search(r'^HF_HOME_DIR\s*=\s*""', src, re.MULTILINE)
+    assert re.search(r'^HF_HOME_DIR\s*=\s*"/content/hf_home"', src, re.MULTILINE)
 
 
 def test_notebook_has_numbered_colab_roadmap_and_stage18_uses_module() -> None:

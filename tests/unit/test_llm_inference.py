@@ -125,8 +125,18 @@ class HFStub:
         transformers.AutoTokenizer = AutoTokenizer  # type: ignore[attr-defined]
         transformers.AutoModelForCausalLM = AutoModelForCausalLM  # type: ignore[attr-defined]
         transformers.__version__ = "stub-4.0"  # type: ignore[attr-defined]
+        hub = types.ModuleType("huggingface_hub")
+        hub.snapshot_download = lambda *a, **k: "/stub/snapshot"  # type: ignore[attr-defined]
+        hub.try_to_load_from_cache = lambda *a, **k: None  # type: ignore[attr-defined]
+
+        class HfApi:
+            def model_info(self, *a: Any, **k: Any) -> Any:
+                raise OSError("offline")
+
+        hub.HfApi = HfApi  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "torch", torch)
         monkeypatch.setitem(sys.modules, "transformers", transformers)
+        monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
 
 
 @pytest.fixture
@@ -154,7 +164,7 @@ def _hf(**kwargs: Any) -> TransformersBackend:
 def test_hf_generates_in_left_padded_greedy_batches(hf: HFStub) -> None:
     backend = _hf()
     assert backend.generate(PROMPTS) == [VALID] * 3
-    assert hf.model_kwargs["revision"] == SHA
+    assert hf.model_kwargs["name"] == "/stub/snapshot"  # snapshot local verificado
     assert hf.model_kwargs["trust_remote_code"] is False
     assert hf.model_kwargs["torch_dtype"] == "float16-sentinel"
     assert hf.tokenizer_kwargs["revision"] == SHA
@@ -239,7 +249,7 @@ def test_hf_requires_revision_in_paper_replication() -> None:
 def test_hf_revision_optional_in_extended(hf: HFStub) -> None:
     backend = _hf(revision=None, track=Track.EXTENDED_ANALYSIS)
     backend.generate(PROMPTS[:1])
-    assert hf.model_kwargs["revision"] is None
+    assert hf.model_kwargs["name"] == "/stub/snapshot"
 
 
 def test_hf_missing_dependency_is_backend_error(monkeypatch: pytest.MonkeyPatch) -> None:

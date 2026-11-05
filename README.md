@@ -68,8 +68,11 @@ O código vem do GitHub (`https://github.com/RodrigoSantosB/physics-llm-sr`, bra
    A primeira importação do PySR instala o Julia (minutos).
 4. **Llama 2** (só fora da execução de hoje): o checkpoint `meta-llama/Llama-2-7b-chat-hf` é restrito; aceite a licença no
    Hugging Face e crie o segredo `HF_TOKEN` no Colab. O Mistral não precisa de token.
-5. **Pesos no Drive (`HF_HOME_DIR`):** com `MOUNT_DRIVE = True` o cache do Hugging Face vai para `<DRIVE_PROJECT_DIR>/hf_home`
-   (Mistral 7B fp16 ocupa cerca de 15 GB; os três modelos, cerca de 40 GB).
+5. **Pesos no disco local (`HF_HOME_DIR = "/content/hf_home"`):** o cache do Hugging Face fica no disco do Colab (Mistral 7B fp16 ocupa cerca de
+   15 GB). Drive só com ≥ 20 GB livres por modelo, e não é recomendado. Antes de carregar, o pacote baixa só `*.json`, `*.safetensors` e
+   tokenizer (sem os `.bin`), confere o tamanho de cada `.safetensors`, rebaixa uma vez o que estiver truncado e falha com mensagem clara.
+   **Erro `SafetensorError: ... header too large`:** pesos truncados (cota de 15 GB do Drive ou escrita via FUSE). Apague o cache antigo
+   (`rm -rf /content/drive/MyDrive/physics-llm-sr-runs/hf_home`), reinicie o ambiente de execução e reexecute com o padrão local.
 6. *Alternativa (sem GitHub):* envie a pasta do projeto com `.git` (ou um `git bundle`) ao Drive e use `REPO_DIR` (ou
    `REPO_URL` apontando para o `.bundle`). No Drive, `git config core.fileMode false` evita `git_dirty` por modos de arquivo.
 
@@ -108,7 +111,7 @@ PRESET = "completo"  # artigo inteiro (dias; retomável)
 ```
 
 Notas: os três modelos transformers (revisões fixadas) existem em `llm.models` de todas as configs Colab. Só um modelo fica
-residente por vez (o runner descarrega o anterior) e cada um ocupa cerca de 15 GB em `HF_HOME` no Drive. O Llama 2 é restrito:
+residente por vez (o runner descarrega o anterior) e cada um ocupa cerca de 15 GB em `HF_HOME` (disco local do Colab). O Llama 2 é restrito:
 se `"llama2"` estiver em `MODELOS`, a célula de setup exige o segredo `HF_TOKEN` e para com instruções (peça acesso em
 https://huggingface.co/meta-llama/Llama-2-7b-chat-hf); Mistral e Falcon não exigem token.
 
@@ -256,7 +259,7 @@ ambientes não é presumido (INC-11); a saída do LLM é validada por parser est
 
 1. **Runtime:** *Ambiente de execução, Alterar tipo*, GPU **A100** com **High-RAM**.
 2. **Segredo:** crie `HF_TOKEN` em *Segredos* (com "Acesso ao notebook" ligado), depois de aceitar a licença do Llama 2 no Hugging Face.
-3. **Parâmetros** da primeira célula: `RUN_PROFILE = "colab_pilot"`, `MOUNT_DRIVE = True`, `REPO_DIR` (e `REPO_URL` se usar o bundle); confira cerca de 40 GB livres para `HF_HOME_DIR`.
+3. **Parâmetros** da primeira célula: `RUN_PROFILE = "colab_pilot"`, `MOUNT_DRIVE = True`, `REPO_DIR` (e `REPO_URL` se usar o bundle); confira cerca de 40 GB livres no disco local para `HF_HOME_DIR`.
 4. **Executar** as etapas em ordem. Estimativas do `colab_pilot` (a medir, não garantidas): cerca de 45 min com lote e cerca de 5 h sem lote, mais o PySR (0,5 a 3 h por treino com LLM).
 5. **Resultados:** `<DRIVE_PROJECT_DIR>/results/colab_pilot/notebook_run/` (`results.parquet`, `manifest.json`, `figures/`); cache do LLM em `<DRIVE_PROJECT_DIR>/.cache/llm`.
 6. **Retomar após desconexão:** abra o notebook, repita os parâmetros e reexecute a primeira célula e as etapas; as células concluídas são puladas.

@@ -127,18 +127,24 @@ def test_execute_stops_before_pip_when_repo_missing(
     assert calls == []  # nenhum pip em caminho inexistente
 
 
-def test_hf_home_defaults_into_drive_project_when_mounted() -> None:
+def test_hf_home_defaults_to_local_disk_and_overrides_env() -> None:
     plan = colab.setup_environment(
         repo_dir=REPO, mount_drive=True, drive_dir="/d/proj", in_colab=True, dry_run=True
     )
     hf = next(a for a in plan.actions if a.kind == "env" and a.name == "HF_HOME")
-    assert hf.value == "/d/proj/hf_home"
+    assert hf.value == "/content/hf_home"
     custom = colab.setup_environment(
         repo_dir=REPO, mount_drive=True, hf_home="/x/hf", in_colab=True, dry_run=True
     )
     assert next(a.value for a in custom.actions if a.name == "HF_HOME") == "/x/hf"
-    plain = colab.setup_environment(repo_dir=REPO, in_colab=True, dry_run=True)
-    assert all(a.name != "HF_HOME" for a in plain.actions)
+    old = {"HF_HOME": "/content/drive/old"}
+    over = colab.setup_environment(
+        repo_dir=REPO, in_colab=True, dry_run=True, environ=old, hf_home="/content/hf_home"
+    )
+    assert next(a.kind for a in over.actions if a.name == "HF_HOME") == "env"
+    assert any("reinicie" in a.description for a in over.actions if a.kind == "warning")
+    local = colab.setup_environment(repo_dir=REPO, in_colab=False, dry_run=True, environ={})
+    assert all(a.name != "HF_HOME" for a in local.actions)
 
 
 def test_dry_run_local_does_not_pip_install(monkeypatch: pytest.MonkeyPatch) -> None:
