@@ -147,3 +147,7 @@ def test_build_evaluator_fake_backend() -> None:
     cfg = colab.notebook_config("smoke", "replication", repo_dir=REPO)
     evaluator = colab.build_evaluator(cfg)
     assert evaluator.backend.model_metadata()["checkpoint"] == "fake-evaluator"
+
+
+def test_detect_colab_is_false_without_google_package() -> None:
+    assert colab.detect_colab() is False

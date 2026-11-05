@@ -18,24 +18,25 @@ import sys
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from physics_llm_sr.config.loader import load_config, parse_config
 from physics_llm_sr.config.paths import PROJECT_ROOT_ENV, resolve_project_path
 from physics_llm_sr.config.schemas import ExperimentConfig
-from physics_llm_sr.experiments.reporting import load_run_config
-from physics_llm_sr.experiments.runner import RunSummary, resolve_experiments, run_experiments
-from physics_llm_sr.experiments.storage import RESULTS_FILE
-from physics_llm_sr.llm.inference import build_backend
-from physics_llm_sr.llm.scoring import LLMEquationEvaluator
+from physics_llm_sr.core_types import Mode, Track
 from physics_llm_sr.reproducibility.manifests import (
     TRACKED_LIBRARIES,
     julia_version,
     library_versions,
 )
 
+if TYPE_CHECKING:  # imports pesados ficam adiados: o módulo é importável antes do pip install
+    from physics_llm_sr.experiments.runner import RunSummary
+    from physics_llm_sr.llm.scoring import LLMEquationEvaluator
+
+RESULTS_FILE = "results.parquet"
 PROMPTS_DIR_ENV = "PHYSICS_LLM_SR_PROMPTS_DIR"
 REFERENCES_DIR_ENV = "PHYSICS_LLM_SR_REFERENCES_DIR"
 REPO_DIR_ENV = "PHYSICS_LLM_SR_REPO_DIR"
@@ -101,7 +102,10 @@ class EnvironmentPlan:
 
 def detect_colab() -> bool:
     """Verdadeiro se o código roda no Google Colab."""
-    return importlib.util.find_spec(COLAB_MODULE) is not None
+    try:
+        return importlib.util.find_spec(COLAB_MODULE) is not None
+    except ModuleNotFoundError:  # pacote pai ``google`` ausente
+        return False
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -256,7 +260,13 @@ def environment_report() -> dict[str, Any]:
 
     versions = library_versions(TRACKED_LIBRARIES)
     versions["physics-llm-sr"] = _version("physics-llm-sr")
+    cuda: bool | None = None
+    if importlib.util.find_spec("torch") is not None:
+        import torch
+
+        cuda = bool(torch.cuda.is_available())
     return {
+        "cuda_disponível": cuda,
         "python": sys.version.split()[0],
         "libraries": versions,
         "julia": julia_version(),
@@ -310,6 +320,8 @@ def notebook_run_dir(cfg: ExperimentConfig) -> Path:
 
 def stage_allowed(cfg: ExperimentConfig, experiments: Iterable[str]) -> list[str]:
     """Experimentos pedidos que a config prevê (baseline e llm_integration sempre)."""
+    from physics_llm_sr.experiments.runner import resolve_experiments
+
     wanted = resolve_experiments(list(experiments), cfg)
     allowed = set(cfg.experiments.run) | set(CORE_EXPERIMENTS)
     return [name for name in wanted if name in allowed]
@@ -325,6 +337,8 @@ def resolve_stage(
     notebook. Garante a raiz de projeto (``PHYSICS_LLM_SR_PROJECT_ROOT``) se ainda não houver.
     """
     if str(existing_run):
+        from physics_llm_sr.experiments.reporting import load_run_config
+
         path = Path(existing_run).expanduser().resolve()
         return load_run_config(path), path
     os.environ.setdefault(PROJECT_ROOT_ENV, str(find_repo_root()))
@@ -340,6 +354,9 @@ def load_results(run_dir: str | Path) -> pd.DataFrame:
 
 def build_evaluator(cfg: ExperimentConfig, model: str | None = None) -> LLMEquationEvaluator:
     """Avaliador LLM da config (mesma construção do runner); ``model`` default = o primeiro."""
+    from physics_llm_sr.llm.inference import build_backend
+    from physics_llm_sr.llm.scoring import LLMEquationEvaluator
+
     name = model or (cfg.experiments.models or [m.name for m in cfg.llm.models])[0]
     return LLMEquationEvaluator.from_config(cfg.llm, build_backend(cfg.llm, name, track=cfg.track))
 
@@ -360,13 +377,22 @@ def run_notebook_stage(
     only = stage_allowed(cfg, experiments)
     if not only or not execute:
         return path, None
+    from physics_llm_sr.experiments.reporting import consolidate
+    from physics_llm_sr.experiments.runner import run_experiments
+
+    # O relatório completo (comparação com o artigo, figuras) custa dezenas de segundos:
+    # só a etapa 16 o gera; as demais apenas consolidam os resultados em results.parquet.
+    kwargs.setdefault("write_report", False)
     summary = run_experiments(cfg, run_dir=path, resume=True, only=only, **kwargs)
+    consolidate(summary.run_dir)
     return summary.run_dir, summary
 
 
 def profile_summary(cfg: ExperimentConfig) -> Mapping[str, Any]:
     """Resumo legível da config para exibição."""
+    reduced = cfg.mode is not Mode.FULL or cfg.track is not Track.PAPER_REPLICATION
     return {
+        "reduzida (não é reprodução completa)": reduced,
         "mode": cfg.mode.value,
         "track": cfg.track.value,
         "normalization": cfg.loss.normalization,
