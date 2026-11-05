@@ -16,8 +16,8 @@ import pandas as pd
 import pytest
 
 from physics_llm_sr.config.loader import load_config, parse_config
-from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.config.paths import PROJECT_ROOT_ENV
+from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.core_types import Mode, PhysicalContext
 from physics_llm_sr.experiments import sr_registry
 from physics_llm_sr.experiments.runner import ExperimentAbortedError, run_experiments

@@ -113,6 +113,23 @@ def _git_dirty(cwd: Path | None) -> bool | None:
     return None if status is None else bool(status)
 
 
+def code_identity(repo_dir: str | Path | None = None) -> dict[str, Any]:
+    """Identidade do código: ``git_sha``, ``git_dirty`` e ``git_diff_hash``.
+
+    ``git_diff_hash`` = SHA-256 de ``git diff HEAD`` (mudanças rastreadas não commitadas;
+    ``None`` se a árvore está limpa ou fora de um repositório). Arquivos não rastreados não
+    entram no hash.
+    """
+    where = Path(repo_dir) if repo_dir is not None else Path(__file__).parent
+    dirty = _git_dirty(where)
+    diff = _run(["git", "diff", "HEAD"], where) if dirty else None
+    return {
+        "git_sha": git_sha(where),
+        "git_dirty": dirty,
+        "git_diff_hash": hashlib.sha256(diff.encode("utf-8")).hexdigest() if diff else None,
+    }
+
+
 def library_versions(names: tuple[str, ...] = TRACKED_LIBRARIES) -> dict[str, str | None]:
     """Versões instaladas das bibliotecas rastreadas (``None`` se ausente)."""
     out: dict[str, str | None] = {}

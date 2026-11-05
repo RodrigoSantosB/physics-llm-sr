@@ -103,6 +103,19 @@ def incomplete_reasons(
     return reasons
 
 
+def run_warnings(run_info: dict[str, Any]) -> list[str]:
+    """Avisos registrados em ``run.json`` (ex.: retomada com código diferente)."""
+    out = []
+    for change in run_info.get("code_changes") or []:
+        before, after = change.get("from") or {}, change.get("to") or {}
+        out.append(
+            f"retomada com código diferente (--allow-code-change) em {change.get('at')}: "
+            f"git_sha {str(before.get('git_sha'))[:12]} dirty={before.get('git_dirty')} -> "
+            f"{str(after.get('git_sha'))[:12]} dirty={after.get('git_dirty')}"
+        )
+    return out
+
+
 def consolidate(run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Junta as células em ``results.parquet`` e ``history.parquet`` (ordem por chave)."""
     run_dir = Path(run_dir)
@@ -227,6 +240,7 @@ def report(run_dir: Path) -> dict[str, Any]:
         "complete_result": not reasons,
         "incomplete_reasons": reasons,
         "label": label,
+        "warnings": run_warnings(run_info),
         "n_cells": len(results),
         "n_ok": 0,
         "n_error": 0,

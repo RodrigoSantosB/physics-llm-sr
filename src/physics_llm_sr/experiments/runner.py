@@ -58,12 +58,14 @@ from physics_llm_sr.reproducibility.artifacts import (
 from physics_llm_sr.reproducibility.manifests import (
     RunManifest,
     build_manifest,
+    code_identity,
     hash_config,
     new_run_id,
 )
 
 __all__ = [
     "EXPERIMENTS",
+    "CodeChangedError",
     "ExperimentAbortedError",
     "PlannedCell",
     "RunSummary",
@@ -83,6 +85,10 @@ CellCallback = Callable[[Cell, CellOutcome], None]
 
 RUN_STATUS_RUNNING = "running"
 RUN_STATUS_FINISHED = "finished"
+
+
+class CodeChangedError(ValueError):
+    """Retomada com código (git) diferente do registrado em ``run.json``."""
 
 
 class ExperimentAbortedError(RuntimeError):
@@ -129,7 +135,40 @@ def _default_evaluator_factory(cfg: ExperimentConfig) -> EvaluatorFactory:
     return factory
 
 
-def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> tuple[Path, str]:
+CODE_KEYS = ("git_sha", "git_dirty", "git_diff_hash")
+
+
+def _current_code(info: dict[str, Any]) -> dict[str, Any]:
+    """Identidade de código vigente da execução (última mudança permitida ou a da criação)."""
+    changes = info.get("code_changes") or []
+    if changes:
+        latest: dict[str, Any] = changes[-1]["to"]
+        return latest
+    return {k: info.get(k) for k in CODE_KEYS}
+
+
+def _check_code(path: Path, info: dict[str, Any], allow_code_change: bool) -> None:
+    """Recusa retomar com código diferente, salvo ``allow_code_change`` (registrado)."""
+    stored = _current_code(info)
+    now = code_identity()
+    if {k: now.get(k) for k in CODE_KEYS} == stored:
+        return
+    if not allow_code_change:
+        raise CodeChangedError(
+            f"código diverge da execução em {path} (git_sha {str(stored.get('git_sha'))[:12]} "
+            f"dirty={stored.get('git_dirty')} -> {str(now.get('git_sha'))[:12]} "
+            f"dirty={now.get('git_dirty')}): a retomada exige o mesmo código; use "
+            "--allow-code-change (allow_code_change=True) para retomar mesmo assim (fica "
+            "registrado em run.json e como aviso no relatório)"
+        )
+    LOGGER.warning("retomando %s com código diferente (--allow-code-change)", path)
+    change = {"at": datetime.now(timezone.utc).isoformat(), "from": stored, "to": now}
+    _update_run_info(path, code_changes=[*(info.get("code_changes") or []), change])
+
+
+def _open_run_dir(
+    cfg: ExperimentConfig, run_dir: Path | None, resume: bool, allow_code_change: bool = False
+) -> tuple[Path, str]:
     target = hash_config(cfg)
     if run_dir is None and resume:
         run_dir = find_resumable_run(cfg)
@@ -142,6 +181,7 @@ def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> 
                 f"config diverge da execução em {run_dir} (hash {info['config_hash'][:12]} "
                 f"!= {target[:12]}): a retomada exige a mesma config"
             )
+        _check_code(Path(run_dir), info, allow_code_change)
         return Path(run_dir), str(info["run_id"])
     run_id = new_run_id()
     if run_dir is None:
@@ -156,6 +196,7 @@ def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> 
             "mode": cfg.mode.value,
             "track": cfg.track.value,
             "config_hash": target,
+            **code_identity(),
             "config": cfg.model_dump(mode="json"),
         },
         path / RUN_FILE,
@@ -173,6 +214,7 @@ def run_experiments(
     evaluator_factory: EvaluatorFactory | None = None,
     on_cell_done: CellCallback | None = None,
     write_report: bool = True,
+    allow_code_change: bool = False,
 ) -> RunSummary:
     """Executa a matriz da config célula a célula, com checkpoint e retomada.
 
@@ -187,11 +229,14 @@ def run_experiments(
             (``build_backend`` + ``LLMEquationEvaluator.from_config``).
         on_cell_done: chamado após cada célula executada (e gravada).
         write_report: consolida e gera relatório/figuras ao final.
+        allow_code_change: permite retomar com código (git) diferente do registrado em
+            ``run.json``; a mudança é registrada em ``code_changes`` e avisada no relatório.
 
     Raises:
         ExperimentAbortedError: falha de célula em full/paper_replication.
+        CodeChangedError: retomada com código diferente sem ``allow_code_change``.
     """
-    path, run_id = _open_run_dir(cfg, run_dir, resume)
+    path, run_id = _open_run_dir(cfg, run_dir, resume, allow_code_change)
     planned = build_matrix(cfg, only, algorithms)
     _update_run_info(
         path,
