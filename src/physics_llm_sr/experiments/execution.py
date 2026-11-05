@@ -3,6 +3,10 @@
 Falhas esperadas (LLM, adaptador indisponível, tempo excedido, predição não finita) viram
 uma linha ``status='error'`` com o motivo — nunca nota substituta nem silêncio. Erros de
 programação propagam.
+
+Auditoria de paridade reprovada (PySR: ``metadata.extra["audit_failed"]``) nunca é
+descartada: a linha recebe ``audit_failed=True`` e ``audit_reason``; em
+``full`` + ``paper_replication`` a célula vira ``error`` (:class:`AuditFailedError`).
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from physics_llm_sr.config.schemas import ExperimentConfig, SeedsConfig
-from physics_llm_sr.core_types import Dataset
+from physics_llm_sr.core_types import Dataset, Mode, Track
 from physics_llm_sr.evaluation.metrics import MetricInputError, regression_metrics
 from physics_llm_sr.experiments.cells import NONE, Cell
 from physics_llm_sr.experiments.data_provider import (
@@ -40,7 +44,12 @@ from physics_llm_sr.optimization.search_history import SearchHistory
 from physics_llm_sr.physics.registry import get_scenario
 from physics_llm_sr.reproducibility.manifests import RunManifest
 from physics_llm_sr.reproducibility.seeds import derive_seed
-from physics_llm_sr.sr.interfaces import FitResult, FloatArray, LossBreakdown
+from physics_llm_sr.sr.interfaces import (
+    AdapterRuntimeError,
+    FitResult,
+    FloatArray,
+    LossBreakdown,
+)
 from physics_llm_sr.symbolic.expression import Expr, depth, parse_infix, size, to_infix
 
 PARTITION_PREFIXES = {"train": "train", "validation": "validation", "test": "test"}
@@ -51,14 +60,25 @@ class CellTimeLimitError(RuntimeError):
     """Tempo de parede da célula excedeu ``experiments.max_cell_seconds``."""
 
 
+class AuditFailedError(RuntimeError):
+    """Auditoria de paridade do adaptador reprovada em full + paper_replication."""
+
+
 #: Falhas registradas como célula ``error`` (as demais exceções propagam).
 CELL_FAILURES: tuple[type[BaseException], ...] = (
     EvaluationFailedError,
     BackendError,
     AdapterUnavailableError,
+    AdapterRuntimeError,
+    AuditFailedError,
     CellTimeLimitError,
     MetricInputError,
 )
+
+
+def is_strict(cfg: ExperimentConfig) -> bool:
+    """``full`` + ``paper_replication``: falha de célula aborta; auditoria reprovada é erro."""
+    return cfg.mode is Mode.FULL and cfg.track is Track.PAPER_REPLICATION
 
 
 class TimeLimitedObjective:
@@ -194,6 +214,7 @@ def run_cell(ctx: CellContext, cell: Cell) -> CellOutcome:
     cell_cfg = cfg.model_copy(update={"seeds": SeedsConfig(master=seed)})
     evaluator: PhysicsEquationEvaluator | None = None
     before: dict[str, float] = {}
+    row.update(audit_failed=False, audit_reason=None)
     try:
         if not cell.is_baseline:
             evaluator = ctx.evaluator_for(cell.llm)
@@ -211,6 +232,12 @@ def run_cell(ctx: CellContext, cell: Cell) -> CellOutcome:
             objective = TimeLimitedObjective(objective, cfg.experiments.max_cell_seconds)
         regressor = make_regressor(cell.sr)
         fit = regressor.fit(train, objective, cell_cfg, validation=validation)
+        extra = fit.metadata.extra or {}
+        if extra.get("audit_failed"):
+            reason = str(extra.get("audit_reason") or "auditoria de paridade reprovada")
+            row.update(audit_failed=True, audit_reason=reason)
+            if is_strict(cfg):
+                raise AuditFailedError(reason)
         metrics = _all_metrics(regressor.predict, train, validation, test)
     except CELL_FAILURES as exc:
         row.update(

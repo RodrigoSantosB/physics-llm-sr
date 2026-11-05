@@ -29,8 +29,19 @@ reavaliada por ``objective.evaluate_population`` e comparada com a perda do Juli
 (``metadata.extra["audit"]``; tolerância relativa :data:`AUDIT_REL_TOL`).
 
 Histórico: ``warm_start=True`` e ``niterations=1`` por ``fit`` do PySR. A seleção já é
-in-loop (``loss_function``); o laço externo só lê o hall of fame após cada iteração para
-registrar o :class:`GenerationRecord` e aplicar o early stopping do projeto (0,1 %/3).
+in-loop (``loss_function``); o laço externo de uma iteração por vez existe só para ler o
+hall of fame após cada iteração, registrar o :class:`GenerationRecord` e aplicar o early
+stopping do projeto (0,1 %/3). Cada iteração ``i`` usa ``random_state =
+derive_seed(semente_do_adaptador, f"it{i}")`` (:func:`iteration_seed`): sementes distintas
+por iteração (sem re-semear o RNG com o mesmo valor a cada ``fit`` do warm start) e
+determinísticas; a lista vai para ``metadata.extra["iteration_seeds"]``.
+
+Registro e auditoria usam a mesma forma do callback: ``e`` e ``s`` da árvore crua (como
+``plsr_loss`` no Julia: ``count_nodes`` da árvore otimizada) e ``c`` da forma
+``simplify``-ada obtida pelo memo do callback (:meth:`PenaltyCallback.penalty`), logo
+nenhuma chamada LLM nova quando a forma já foi avaliada na busca. Auditoria fora da
+tolerância NÃO é descartada: ``metadata.extra["audit_failed"] = True`` e
+``audit_reason``; o runner marca a célula (em full + paper_replication vira erro).
 
 Falha do LLM (CONVENCOES, pós-spike): o callback registra a exceção, passa a devolver
 ``+inf`` (a árvore não é selecionada e nenhuma nota substituta é usada) e não chama mais
@@ -70,7 +81,9 @@ string) e registrada em ``metadata.extra["best_expression_sympy"]``; ela não é
 porque o sympy reescreve a árvore (``x^0.5 -> sqrt(x)``, dobra produtos) e mudaria ``s``.
 
 Importar este módulo não inicializa o Julia: ``pysr``/``juliacall`` são importados só em
-``fit``.
+``fit``. Falha ao subir o Julia/juliacall em ``fit`` vira :class:`AdapterRuntimeError`
+(célula ``error`` no runner). Versão do PySR fora de :data:`PYSR_SUPPORTED_SERIES` (a partir
+de :data:`PYSR_MIN_VERSION`) é recusada (:class:`UnsupportedPysrError`), como no gplearn.
 """
 
 from __future__ import annotations
@@ -95,6 +108,7 @@ from physics_llm_sr.llm.cache import (
 from physics_llm_sr.optimization.early_stopping import EarlyStopping
 from physics_llm_sr.reproducibility.seeds import derive_seed
 from physics_llm_sr.sr.interfaces import (
+    AdapterRuntimeError,
     CandidateObjective,
     FitResult,
     FloatArray,
@@ -118,6 +132,10 @@ from physics_llm_sr.symbolic.expression import (
 from physics_llm_sr.symbolic.operators import DEFAULT_PROTECTION, OPERATORS, ProtectionParams
 
 ALGORITHM: Final = "pysr"
+#: Série do PySR validada (API ``julia_import``, ``loss_function``, ``warm_start``).
+PYSR_SUPPORTED_SERIES = (2, 7)
+#: Versão mínima validada dentro da série (pyproject: ``pysr>=2.7.2,<2.8``).
+PYSR_MIN_VERSION = (2, 7, 2)
 #: Nome da semente derivada (``reproducibility.seeds.derive_seed``).
 SEED_NAME = "sr/pysr"
 #: Operador do registro (GAP-06) -> operador nativo do PySR.
@@ -216,6 +234,39 @@ class UnsupportedPysrError(RuntimeError):
 
 
 # --------------------------------------------------------------------------- utilitários
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for piece in text.split("."):
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        if not digits or digits != piece:
+            if digits:
+                parts.append(int(digits))
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def check_pysr_version(version: str) -> None:
+    """Recusa versões do PySR fora da série validada.
+
+    Raises:
+        UnsupportedPysrError: versão fora de ``PYSR_SUPPORTED_SERIES`` ou abaixo do mínimo.
+    """
+    parsed = _version_tuple(version)
+    series = PYSR_SUPPORTED_SERIES
+    if parsed[: len(series)] != series or parsed < PYSR_MIN_VERSION:
+        raise UnsupportedPysrError(
+            f"pysr {version} fora da série validada "
+            f"{'.'.join(map(str, PYSR_MIN_VERSION))}..<{series[0]}.{series[1] + 1}: o "
+            "mecanismo in-loop (loss_function + callback) precisa ser revalidado"
+        )
+
+
+def iteration_seed(seed: int, iteration: int) -> int:
+    """``random_state`` da iteração ``iteration`` do laço warm start (determinística)."""
+    return derive_seed(seed, f"it{iteration}")
 
 
 def julia_variable_names(n_features: int) -> list[str]:
@@ -334,14 +385,26 @@ class PenaltyCallback:
     memo: dict[str, float] = field(default_factory=dict)
 
     def __call__(self, text: Any) -> float:
-        """Penalidade ``c`` da forma simplificada da árvore."""
+        """Penalidade ``c`` da forma simplificada da árvore (texto ``string_tree``)."""
         self.calls += 1
         if self.failure is not None:
             return math.inf
         try:
-            expr = simplify(
-                julia_text_to_expr(str(text), self.feature_names), self.scale.protection
-            )
+            raw = julia_text_to_expr(str(text), self.feature_names)
+        except ExpressionError:
+            self.parse_errors += 1
+            return math.inf
+        return self.penalty(raw)
+
+    def penalty(self, raw: Expr) -> float:
+        """``c`` de ``simplify(raw)`` reutilizando o memo (0 chamadas LLM se já avaliada).
+
+        Usado pelo callback e pelo registro/auditoria do adaptador (mesma forma).
+        """
+        if self.failure is not None:
+            return math.inf
+        try:
+            expr = simplify(raw, self.scale.protection)
         except ExpressionError:
             self.parse_errors += 1
             return math.inf
@@ -522,8 +585,16 @@ class PySRRegressor:
         niterations = int(_cfg(config.sr.pysr, "niterations", config.sr.generations, defaults_used))
         params = self.build_params(config, seed, defaults_used)
 
-        jl = _julia()
-        from pysr import PySRRegressor as _NativePySRRegressor
+        try:
+            jl = _julia()
+            import pysr
+        except Exception as exc:  # juliacall/Julia podem levantar qualquer tipo ao subir
+            raise AdapterRuntimeError(
+                f"Julia/juliacall indisponível ao iniciar o PySR em fit: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+        check_pysr_version(str(pysr.__version__))
+        _NativePySRRegressor = pysr.PySRRegressor  # noqa: N806 - classe nativa
 
         callback: PenaltyCallback | None = None
         if in_loop:
@@ -543,6 +614,7 @@ class PySRRegressor:
         jl_names = julia_variable_names(len(self._feature_names))
         equations: Any = None
         best_loss = math.inf
+        iteration_seeds: list[int] = []
         with tempfile.TemporaryDirectory(prefix="plsr_pysr_") as tmp:
             model = _NativePySRRegressor(tempdir=tmp, **params)
             self.model = model
@@ -552,6 +624,8 @@ class PySRRegressor:
                     calls0 = _llm_calls(objective)
                     hits0 = _counter(objective, "cache_hits")
                     memo0 = callback.memo_hits if callback is not None else 0
+                    iteration_seeds.append(iteration_seed(seed, iteration))
+                    model.set_params(random_state=iteration_seeds[-1])
                     with warnings.catch_warnings():
                         # Aviso do PySR sobre ``constraints`` de ``^``: o GAP-06 não as define.
                         warnings.filterwarnings("ignore", message=PYSR_POW_WARNING)
@@ -564,7 +638,7 @@ class PySRRegressor:
                     best = julia_text_to_expr(
                         str(equations["equation"].iloc[i]), self._feature_names
                     )
-                    parts = self._evaluate([best], objective, X, y)[0]
+                    parts = self._evaluate([best], objective, X, y, callback)[0]
                     if callback is not None and callback.failure is not None:
                         raise callback.failure
                     memo1 = callback.memo_hits if callback is not None else 0
@@ -596,7 +670,8 @@ class PySRRegressor:
                 jl.plsr_clear_callback_b()
         assert self._best is not None and equations is not None
         self.stop_reason = stop
-        self.audit = self._audit(equations, objective, X, y)
+        self.audit = self._audit(equations, objective, X, y, callback)
+        audit_failed = not self.audit["ok"]
         julia_calls = int(jl.seval("PLSR_NCALLS[]"))
         try:
             sympy_best: str | None = to_infix(
@@ -604,8 +679,6 @@ class PySRRegressor:
             )
         except (ExpressionError, ValueError) as exc:
             sympy_best = f"<não convertida: {exc}>"
-        import pysr
-
         self._metadata = RegressorMetadata(
             algorithm=ALGORITHM,
             llm_in_loop=in_loop,
@@ -616,6 +689,8 @@ class PySRRegressor:
                 "pysr_version": pysr.__version__,
                 "seed": seed,
                 "seed_name": SEED_NAME,
+                "iteration_seeds": iteration_seeds,
+                "iteration_seed_rule": 'derive_seed(seed, f"it{i}")',
                 "niterations": niterations,
                 "pysr_params": {
                     k: v for k, v in params.items() if k not in ("loss_function", "warm_start")
@@ -634,6 +709,14 @@ class PySRRegressor:
                 "julia_loss_llm_calls": julia_calls,
                 "callback": callback.stats() if callback is not None else None,
                 "audit": self.audit,
+                "audit_failed": audit_failed,
+                "audit_reason": (
+                    f"auditoria de paridade Julia x Python fora da tolerância "
+                    f"{AUDIT_REL_TOL:g}: max_rel_diff={self.audit['max_rel_diff']:.3g} em "
+                    f"{self.audit['n_rows_out_of_tolerance']} linha(s) do hall of fame"
+                )
+                if audit_failed
+                else None,
                 "best_loss_julia": best_loss,
                 "best_expression_sympy": sympy_best,
                 "operator_semantics": "nativa do PySR (ver docstring de sr.pysr_adapter)",
@@ -655,8 +738,29 @@ class PySRRegressor:
         objective: CandidateObjective,
         X: FloatArray,  # noqa: N803
         y: FloatArray,
+        callback: PenaltyCallback | None,
     ) -> list[LossBreakdown]:
-        return list(objective.evaluate_population(list(exprs), X, y))
+        """``L`` como na perda Julia: ``e``/``s`` da árvore crua, ``c`` do memo do callback.
+
+        Sem callback (``w3 = 0``) o objective não chama o avaliador. Com callback, ``e``
+        e ``s`` vêm de ``objective.components`` (sem LLM) e ``c`` de
+        :meth:`PenaltyCallback.penalty` (forma simplificada, memo compartilhado).
+        """
+        components = getattr(objective, "components", None)
+        if callback is None or not callable(components):
+            return list(objective.evaluate_population(list(exprs), X, y))
+        w1, w2, w3 = callback.scale.weights
+        out: list[LossBreakdown] = []
+        for expr in exprs:
+            e, s = components(expr, X, y)
+            if not math.isfinite(e):
+                out.append(LossBreakdown(math.inf, math.inf, s, math.nan, None))
+                continue
+            c = callback.penalty(expr)
+            if callback.failure is not None:
+                raise callback.failure
+            out.append(LossBreakdown(w1 * e + w2 * s + w3 * c, e, s, c, None))
+        return out
 
     def _audit(
         self,
@@ -664,10 +768,11 @@ class PySRRegressor:
         objective: CandidateObjective,
         X: FloatArray,  # noqa: N803
         y: FloatArray,
+        callback: PenaltyCallback | None,
     ) -> dict[str, Any]:
-        """Paridade ``loss`` Julia vs ``objective.evaluate_population`` no hall of fame."""
+        """Paridade ``loss`` Julia vs ``L`` Python (mesma forma do callback) no hall of fame."""
         exprs = [julia_text_to_expr(str(t), self._feature_names) for t in equations["equation"]]
-        losses = self._evaluate(exprs, objective, X, y)
+        losses = self._evaluate(exprs, objective, X, y, callback)
         julia = [float(v) for v in equations["loss"]]
         diffs = [_rel_diff(j, lb.total) for j, lb in zip(julia, losses, strict=True)]
         assert self._best_index is not None

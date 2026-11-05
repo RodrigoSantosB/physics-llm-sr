@@ -34,7 +34,7 @@ from physics_llm_sr.experiments import (
 )
 from physics_llm_sr.experiments.cells import Cell
 from physics_llm_sr.experiments.data_provider import DataProvider
-from physics_llm_sr.experiments.execution import CellContext, CellOutcome, run_cell
+from physics_llm_sr.experiments.execution import CellContext, CellOutcome, is_strict, run_cell
 from physics_llm_sr.experiments.reporting import (
     methodological_view,
     replot,
@@ -165,7 +165,7 @@ def build_matrix(
 
 def aborts_on_failure(cfg: ExperimentConfig) -> bool:
     """Falha de célula aborta só em full + paper_replication."""
-    return cfg.mode is Mode.FULL and cfg.track is Track.PAPER_REPLICATION
+    return is_strict(cfg)
 
 
 def find_resumable_run(cfg: ExperimentConfig) -> Path | None:

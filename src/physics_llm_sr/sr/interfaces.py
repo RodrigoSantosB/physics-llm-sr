@@ -28,6 +28,14 @@ IntegrationStatus = Literal["integrated", "limited", "baseline_only"]
 StopReason = Literal["max_generations", "early_stopping", "error", "time_limit"]
 
 
+class AdapterRuntimeError(RuntimeError):
+    """Backend nativo do adaptador indisponível durante ``fit`` (ex.: Julia/juliacall).
+
+    O runner registra a célula como ``error`` com o motivo (smoke/pilot seguem;
+    full + paper_replication aborta).
+    """
+
+
 @dataclass(frozen=True)
 class LossBreakdown:
     """Perda composta de um candidato: ``total`` e componentes ``e``, ``s``, ``c``.

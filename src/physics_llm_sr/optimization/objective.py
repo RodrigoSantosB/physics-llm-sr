@@ -182,6 +182,24 @@ class CombinedObjective:
 
     # ------------------------------------------------------------------ API
 
+    def components(
+        self,
+        expr: Expr,
+        X: FloatArray,  # noqa: N803 - nome do contrato (PRD)
+        y: FloatArray,
+    ) -> tuple[float, float]:
+        """``(e, s)`` de uma expressão, sem chamar o avaliador LLM (mesma escala de L).
+
+        Raises:
+            ValueError: modo normalized com ``Var(y) == 0``.
+        """
+        y_arr = np.asarray(y, dtype=np.float64)
+        with np.errstate(all="ignore"):
+            var_y = float(np.var(y_arr))
+        if self.normalization == "normalized" and not var_y > MIN_TARGET_VARIANCE:
+            raise ValueError("modo normalized exige Var(y) > 0")
+        return self._error(expr, X, y_arr, var_y), self._size(expr)
+
     def evaluate_population(
         self,
         exprs: Sequence[Expr],
