@@ -174,3 +174,29 @@ def test_combined_objective_satisfies_candidate_objective_protocol() -> None:
     obj = CombinedObjective((0.5, 0.5, 0.0), None, None, feature_names=["a", "b"])
     assert isinstance(obj, CandidateObjective)
     assert obj.feature_names == ("a", "b")
+
+
+def test_dedup_uses_three_significant_digits_by_default() -> None:
+    a, b = parse_infix("x * 2.0001", FEATURES), parse_infix("x * 2.0002", FEATURES)
+    fake = FakeEquationEvaluator.from_function(lambda e, c, v: ev(1, 1, 1))
+    obj = objective((0.4, 0.2, 0.4), fake)
+    assert obj.significant_digits == 3 and obj.key_mode == "exact"
+    obj.evaluate_population([a, b], X, Y)
+    assert obj.counters.unique_llm == 1 and fake.calls == 1
+    exact6 = objective((0.4, 0.2, 0.4), fake, significant_digits=6)
+    exact6.evaluate_population([a, b], X, Y)
+    assert exact6.counters.unique_llm == 2
+
+
+def test_dedup_structure_mode_masks_constants() -> None:
+    a, b = parse_infix("x * 2.0", FEATURES), parse_infix("x * 5.0", FEATURES)
+    fake = FakeEquationEvaluator.from_function(lambda e, c, v: ev(1, 1, 1))
+    obj = objective((0.4, 0.2, 0.4), fake, key_mode="structure")
+    out = obj.evaluate_population([a, b], X, Y)
+    assert obj.counters.unique_llm == 1 and fake.calls == 1
+    assert out[0].c == out[1].c
+    assert obj.metadata["cache_key_mode"] == "structure"
+    with pytest.raises(ValueError):
+        objective((0.4, 0.2, 0.4), fake, key_mode="loose")
+    with pytest.raises(ValueError):
+        objective((0.4, 0.2, 0.4), fake, significant_digits=0)
