@@ -17,6 +17,9 @@ from physics_llm_sr.core_types import Mode, Track
 #: Tolerância numérica para aceitar ``w1+w2+w3 == 1`` e ``train+val+test == 1``.
 WEIGHT_SUM_TOLERANCE = 1e-6
 
+#: Backends que nunca produzem reprodução completa (Q4 é desvio; fake é simulado).
+FULL_REPLICATION_FORBIDDEN_BACKENDS = ("fake", "ollama")
+
 ScenarioName = Literal["free_fall", "harmonic_motion", "damped_wave"]
 AlgorithmName = Literal["deap", "gplearn", "pysr"]
 OperatorName = Literal["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos", "pow", "sqrt"]
@@ -326,6 +329,16 @@ class ExperimentConfig(_Strict):
 
     @model_validator(mode="after")
     def _cross_checks(self) -> ExperimentConfig:
+        if (
+            self.mode is Mode.FULL
+            and self.track is Track.PAPER_REPLICATION
+            and self.llm.backend in FULL_REPLICATION_FORBIDDEN_BACKENDS
+        ):
+            raise ValueError(
+                f"mode='full' com track='paper_replication' exige llm.backend='transformers' "
+                f"(fp16, revisão fixada); backend {self.llm.backend!r} é desvio (Q4 no Ollama / "
+                "avaliador simulado): use mode pilot/smoke ou track extended_analysis"
+            )
         if self.track is Track.PAPER_REPLICATION and self.loss.normalization == "normalized":
             raise ValueError(
                 "loss.normalization='normalized' é desvio experimental; "

@@ -10,6 +10,8 @@ import pandas as pd
 
 from physics_llm_sr.config.loader import load_config
 from physics_llm_sr.core_types import Dataset
+from physics_llm_sr.data.validation import compute_data_hash
+from physics_llm_sr.llm.inference import FakeBackend, OllamaBackend
 from physics_llm_sr.reproducibility.artifacts import (
     create_run_dir,
     load_json,
@@ -37,7 +39,11 @@ REQUIRED_FIELDS = {
     "mode",
     "track",
     "config_hash",
-    "data_hash",
+    "data_hashes",
+    "metrics",
+    "discovered_expressions",
+    "history_file",
+    "stop_conditions",
     "git_sha",
     "python_version",
     "julia_version",
@@ -75,7 +81,7 @@ def test_manifest_has_all_required_fields() -> None:
     cfg = load_config(SMOKE)
     m = build_manifest(
         cfg,
-        dataset=_dataset(),
+        datasets={"free_fall/clean": _dataset(), "free_fall/target_1pct": _dataset(2.0)},
         seeds={"data": 1},
         prompt={"variant": "E", "text": "hello"},
         timings={"fit": 1.5},
@@ -83,7 +89,10 @@ def test_manifest_has_all_required_fields() -> None:
     dumped = m.model_dump(mode="json")
     assert REQUIRED_FIELDS <= set(dumped)
     assert dumped["config_hash"] == hash_config(cfg)
-    assert dumped["data_hash"] == hash_dataset(_dataset())
+    assert dumped["data_hashes"] == {
+        "free_fall/clean": compute_data_hash(_dataset()),
+        "free_fall/target_1pct": compute_data_hash(_dataset(2.0)),
+    }
     assert dumped["seeds"] == {"data": 1}
     assert dumped["timings"] == {"fit": 1.5}
     assert dumped["prompt"]["variant"] == "E"
@@ -130,7 +139,7 @@ def test_git_sha_in_repo_is_hex() -> None:
 
 def test_manifest_roundtrip_on_disk(tmp_path: Path) -> None:
     cfg = load_config(SMOKE)
-    m = build_manifest(cfg, dataset=_dataset())
+    m = build_manifest(cfg, datasets={"free_fall/clean": _dataset()})
     run_dir = create_run_dir(tmp_path, m.run_id)
     assert run_dir.is_dir()
     path = save_manifest(m, run_dir)
@@ -154,3 +163,52 @@ def test_create_run_dir_refuses_existing(tmp_path: Path) -> None:
     except FileExistsError:
         return
     raise AssertionError("esperava FileExistsError")
+
+
+def test_single_dataset_hash_algorithm() -> None:
+    assert hash_dataset(_dataset()) == compute_data_hash(_dataset())
+
+
+def test_section_11_fields_are_recorded(tmp_path: Path) -> None:
+    cfg = load_config(SMOKE)
+    m = build_manifest(
+        cfg,
+        metrics={"free_fall/deap/mistral": {"mae": 0.1, "tree_distance": 0.0}},
+        discovered_expressions=[{"scenario": "free_fall", "expression": "sqrt(2*9.81*height)"}],
+        history_file="runs/x/history.parquet",
+        interruption="early_stopping: 3 gerações sem melhoria",
+        timings={"total": 9.0, "llm": 3.0},
+    )
+    d = m.model_dump(mode="json")
+    assert d["metrics"]["free_fall/deap/mistral"]["mae"] == 0.1
+    assert d["discovered_expressions"][0]["expression"].startswith("sqrt")
+    assert d["history_file"] == "runs/x/history.parquet"
+    ee = cfg.sr.early_stopping
+    assert d["stop_conditions"]["early_stopping"]["patience"] == ee.patience
+    assert d["stop_conditions"]["interruption"].startswith("early_stopping")
+    assert d["timings"] == {"total": 9.0, "llm": 3.0}
+    save_manifest(m, tmp_path)
+    assert load_manifest(tmp_path).metrics == m.metrics
+
+
+def test_llm_models_carry_effective_model_metadata() -> None:
+    cfg = load_config(SMOKE)
+    name = cfg.llm.models[0].name
+
+    class _Session:
+        def get(self, url: str, timeout: float) -> object:
+            class R:
+                def raise_for_status(self) -> None: ...
+                def json(self) -> dict[str, object]:
+                    return {"models": [{"name": "m", "digest": "sha256:abc"}]}
+
+            return R()
+
+    ollama = OllamaBackend("m", session=_Session())
+    m = build_manifest(cfg, backends={name: ollama})
+    entry = next(e for e in m.llm_models if e["name"] == name)
+    assert entry["effective"]["digest"] == "sha256:abc"
+    assert entry["effective"]["backend"] == "ollama"
+    fake = build_manifest(cfg, backends={name: FakeBackend()})
+    eff = next(e for e in fake.llm_models if e["name"] == name)["effective"]
+    assert eff["backend"] == "fake"
