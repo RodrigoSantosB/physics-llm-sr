@@ -141,7 +141,7 @@ def test_inloop_search_shifts_population_toward_llm_preference() -> None:
     )
     fractions: dict[bool, float] = {}
     best: dict[bool, str] = {}
-    max_nodes = 2 ** (cfg.sr.deap.max_depth + 1) - 1  # mesma regra de build_objective
+    max_nodes = 2 ** (cfg.sr.deap.max_depth + 1) - 1  # escala fixa do teste
     for baseline in (False, True):
         fake = FakeEquationEvaluator.from_function(_favor_cos)
         objective = CombinedObjective(

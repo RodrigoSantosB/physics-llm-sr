@@ -61,6 +61,32 @@ DEFAULT_PROMPT_VARIANT = "E"
 C_STATUS_EVALUATED = "evaluated"
 C_STATUS_W3_ZERO = "not_evaluated_w3_zero"
 C_STATUS_INVALID = "invalid"
+#: Regra de ``max_nodes`` (denominador de ``s`` no modo normalized) por algoritmo.
+MAX_NODES_RULES: dict[str, str] = {
+    "deap": "2**(sr.deap.max_depth + 1) - 1 (árvore binária completa na profundidade máxima)",
+    "gplearn": (
+        "2**(sr.gplearn.init_depth[1] + 1) - 1 (gplearn não limita o tamanho na evolução; "
+        "árvore binária completa na profundidade inicial máxima, hipótese; s pode passar de 1)"
+    ),
+    "pysr": "sr.pysr.maxsize (limite de nós do PySR)",
+}
+
+
+def max_nodes_for(cfg: ExperimentConfig, algorithm: str) -> int:
+    """``max_nodes`` do modo normalized para ``algorithm`` (:data:`MAX_NODES_RULES`).
+
+    Raises:
+        ValueError: algoritmo sem regra.
+    """
+    if algorithm == "deap":
+        return int(2 ** (cfg.sr.deap.max_depth + 1) - 1)
+    if algorithm == "gplearn":
+        return int(2 ** (cfg.sr.gplearn.init_depth[1] + 1) - 1)
+    if algorithm == "pysr":
+        return int(cfg.sr.pysr.maxsize)
+    raise ValueError(
+        f"sem regra de max_nodes para {algorithm!r}; válidos: {sorted(MAX_NODES_RULES)}"
+    )
 
 
 @dataclass
@@ -291,16 +317,17 @@ def build_objective(
     - ``baseline=True``: pesos ``loss.baseline_weights`` (w3 = 0; avaliador ignorado).
     - ``algorithm == "pysr"`` com ``sr.pysr.loss == "huber"``: erro Huber (GAP-05);
       demais: MSE.
-    - ``normalized``: ``max_nodes = 2**(sr.deap.max_depth + 1) - 1`` (nós de uma árvore
-      binária completa na profundidade máxima; a config não tem ``loss.max_nodes``).
+    - ``normalized``: ``max_nodes`` por algoritmo (:func:`max_nodes_for`; regra em
+      ``metadata["max_nodes_rule"]``): DEAP ``2**(max_depth+1)-1``, gplearn
+      ``2**(init_depth[1]+1)-1``, PySR ``maxsize``. Só afeta o modo normalized.
     - Chave de deduplicação: ``llm.cache_significant_digits`` e ``llm.cache_key_mode``
       quando existirem na config; senão os defaults (3, ``exact``).
     """
     loss = cfg.loss
     weights = loss.baseline_weights if baseline else (loss.w1, loss.w2, loss.w3)
     use_huber = algorithm == "pysr" and cfg.sr.pysr.loss == "huber"
-    max_nodes = 2 ** (cfg.sr.deap.max_depth + 1) - 1
-    return CombinedObjective(
+    normalized = loss.normalization == "normalized"
+    objective = CombinedObjective(
         weights=weights,
         evaluator=None if baseline else evaluator,
         physical_context=physical_context,
@@ -309,10 +336,13 @@ def build_objective(
         normalization=loss.normalization,
         error_metric="huber" if use_huber else "mse",
         huber_delta=cfg.sr.pysr.huber_delta,
-        max_nodes=max_nodes if loss.normalization == "normalized" else None,
+        max_nodes=max_nodes_for(cfg, algorithm) if normalized else None,
         protection=ProtectionParams.from_config(cfg.symbolic),
         significant_digits=int(
             getattr(cfg.llm, "cache_significant_digits", DEFAULT_CACHE_SIGNIFICANT_DIGITS)
         ),
         key_mode=str(getattr(cfg.llm, "cache_key_mode", DEFAULT_CACHE_KEY_MODE)),
     )
+    if normalized:
+        objective.metadata["max_nodes_rule"] = MAX_NODES_RULES[algorithm]
+    return objective

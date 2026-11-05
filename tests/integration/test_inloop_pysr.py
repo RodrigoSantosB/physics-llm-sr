@@ -77,7 +77,7 @@ def _run(
     ctx: PhysicalContext,
 ) -> tuple[FitResult, FakeEquationEvaluator, PySRRegressor]:  # fmt: skip
     fake = FakeEquationEvaluator.from_function(fn)  # type: ignore[arg-type]
-    max_nodes = 2 ** (cfg.sr.deap.max_depth + 1) - 1  # mesma regra de build_objective
+    max_nodes = 2 ** (cfg.sr.deap.max_depth + 1) - 1  # escala fixa do teste
     objective = CombinedObjective(
         weights, fake, ctx, train.feature_names, normalization="normalized",
         max_nodes=max_nodes, error_metric="huber", huber_delta=cfg.sr.pysr.huber_delta,

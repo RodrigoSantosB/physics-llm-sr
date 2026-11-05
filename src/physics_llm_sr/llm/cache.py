@@ -120,9 +120,10 @@ def model_identity(metadata: Mapping[str, Any]) -> dict[str, Any]:
     Campos: ``backend``, ``checkpoint``, ``revision`` (``digest`` do Ollama tem precedência
     sobre a revisão configurada), ``quantization``, ``batch_size`` e ``prompt_format``
     (transformers: o lote com padding à esquerda e o formato do prompt — chat template com
-    ou sem ``system`` ou texto simples — alteram a saída em fp16; ``None`` nos demais). O backend simulado recebe o prefixo
-    ``fake::`` no checkpoint. Ollama sem digest nem revisão é recusado: o mesmo tag pode
-    apontar para pesos diferentes e o cache serviria resultados de outro modelo.
+    ou sem ``system`` ou texto simples — alteram a saída em fp16; ``None`` nos demais).
+    O backend simulado recebe o prefixo ``fake::`` no checkpoint. Ollama sem digest nem
+    revisão é recusado: o mesmo tag pode apontar para pesos diferentes e o cache serviria
+    resultados de outro modelo.
     """
     backend = str(metadata.get("backend"))
     checkpoint = str(metadata.get("checkpoint"))
