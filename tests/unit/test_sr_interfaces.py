@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -103,7 +104,12 @@ def test_fit_roundtrip_and_metadata() -> None:
 
 
 def test_interfaces_do_not_import_optimization() -> None:
-    assert "physics_llm_sr.optimization.objective" not in sys.modules
+    # Subprocesso: outros testes (optimization) importam o módulo no mesmo processo.
+    code = (
+        "import sys, physics_llm_sr.sr.interfaces;"
+        "sys.exit('physics_llm_sr.optimization.objective' in sys.modules)"
+    )
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
     import physics_llm_sr.sr.interfaces as mod
 
     src = open(mod.__file__, encoding="utf-8").read()
