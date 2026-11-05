@@ -15,7 +15,7 @@ import importlib.util
 import os
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -42,18 +42,21 @@ REFERENCES_DIR_ENV = "PHYSICS_LLM_SR_REFERENCES_DIR"
 REPO_DIR_ENV = "PHYSICS_LLM_SR_REPO_DIR"
 HF_TOKEN_ENV = "HF_TOKEN"
 HF_SECRET_NAME = "HF_TOKEN"
+GATED_PREFIX = "meta-llama/"  # repositórios restritos (Llama 2)
 HF_HOME_ENV = "HF_HOME"
 HF_HOME_SUBDIR = "hf_home"
 PYPROJECT = "pyproject.toml"
 COLAB_MODULE = "google.colab"
 DEFAULT_COLAB_REPO_DIR = "/content/physics-llm-sr"
 DEFAULT_DRIVE_MOUNT = "/content/drive"
-DEFAULT_DRIVE_PROJECT = "/content/drive/MyDrive/physics-llm-sr"
+DEFAULT_DRIVE_PROJECT = "/content/drive/MyDrive/physics-llm-sr-runs"  # só resultados/cache/HF_HOME
+DEFAULT_REPO_URL = "https://github.com/RodrigoSantosB/physics-llm-sr.git"
+DEFAULT_REPO_BRANCH = "main"
 DEFAULT_COLAB_WORK_DIR = "/content/physics-llm-sr-work"
 DEFAULT_EXTRAS = "hf"
 NOTEBOOK_RUN_NAME = "notebook_run"
 
-PROFILES = ("smoke", "pilot", "colab_pilot", "replication")
+PROFILES = ("smoke", "pilot", "colab_pilot", "colab_hoje", "replication")
 ARMS = ("replication", "extended")
 #: (perfil, braço) -> arquivo em ``configs/``.
 CONFIG_FILES: dict[tuple[str, str], str] = {
@@ -63,6 +66,8 @@ CONFIG_FILES: dict[tuple[str, str], str] = {
     ("pilot", "extended"): "pilot_extended.yaml",
     ("colab_pilot", "replication"): "colab_pilot.yaml",
     ("colab_pilot", "extended"): "colab_pilot_extended.yaml",
+    ("colab_hoje", "replication"): "colab_hoje_queda_livre_literal.yaml",  # controle: só P1
+    ("colab_hoje", "extended"): "colab_hoje_queda_livre.yaml",  # principal
     ("replication", "replication"): "replication.yaml",
     ("replication", "extended"): "extended.yaml",
 }
@@ -80,6 +85,20 @@ ALL_EXPERIMENTS = [
     "noise_robustness",
     "biased_noise",
 ]
+
+
+#: Etapas de prioridade da execução de hoje (``colab_hoje``) -> experimentos (aliases do runner).
+HOJE_STAGES: dict[str, tuple[str, ...]] = {
+    "P1": ("exp1", "exp2"),
+    "P2": ("exp3",),
+    "P3": ("exp4",),
+    "P4": ("exp5",),
+}
+#: HIPÓTESES de chamadas LLM únicas por célula com LLM (a medir; cache reduz entre repetições).
+DEFAULT_CALLS_PER_CELL: dict[str, int] = {"deap": 300, "gplearn": 1000, "pysr": 200}
+#: Algoritmos cujo avaliador roda em lote (``llm.batch_size``); PySR chama em série (callback).
+BATCHED_ALGORITHMS = frozenset({"deap", "gplearn"})
+SECONDS_PER_HOUR = 3600.0
 
 
 @dataclass(frozen=True)
@@ -144,6 +163,7 @@ def _plan_colab(
     drive_dir: str,
     extras: str,
     hf_home: str,
+    repo_branch: str = DEFAULT_REPO_BRANCH,
 ) -> tuple[str, str | None]:
     """Acrescenta as ações do Colab (drive, clone, check_repo, pip) e devolve (raiz, HF_HOME).
 
@@ -161,8 +181,10 @@ def _plan_colab(
         plan.actions.append(
             SetupAction(
                 "clone",
-                f"clonar {repo_url} em {repo} (pulado se a pasta já existir)",
-                ("git", "clone", repo_url, str(repo)),
+                f"clonar {repo_url} (branch {repo_branch}, --depth 1) em {repo}; "
+                "se a pasta já existe, `git pull --ff-only`",
+                ("git", "clone", "--depth", "1", "-b", repo_branch, repo_url, str(repo)),
+                value=str(repo),
             )
         )
     plan.actions.append(
@@ -200,6 +222,7 @@ def setup_environment(
     *,
     repo_dir: str | Path | None = None,
     repo_url: str = "",
+    repo_branch: str = DEFAULT_REPO_BRANCH,
     mount_drive: bool = False,
     drive_dir: str = DEFAULT_DRIVE_PROJECT,
     in_colab: bool | None = None,
@@ -228,7 +251,7 @@ def setup_environment(
     root = str(repo)
     hf: str | None = None
     if colab:
-        root, hf = _plan_colab(plan, repo_url, mount_drive, drive_dir, extras, hf_home)
+        root, hf = _plan_colab(plan, repo_url, mount_drive, drive_dir, extras, hf_home, repo_branch)
     wanted = {
         PROJECT_ROOT_ENV: root,
         REPO_DIR_ENV: str(repo),
@@ -259,6 +282,8 @@ def _execute(plan: EnvironmentPlan, env: MutableMapping[str, str]) -> None:
         if action.kind == "clone" and action.command:
             if not plan.repo_dir.is_dir():
                 subprocess.run(action.command, check=True)
+            elif (plan.repo_dir / ".git").exists():
+                subprocess.run(("git", "-C", str(plan.repo_dir), "pull", "--ff-only"), check=True)
         elif action.kind == "check_repo":
             if not (plan.repo_dir / PYPROJECT).is_file():
                 raise RepoNotFoundError(_repo_missing_message(plan.repo_dir))
@@ -366,7 +391,10 @@ def stage_allowed(cfg: ExperimentConfig, experiments: Iterable[str]) -> list[str
 
 
 def resolve_stage(
-    profile: str, arm: str, existing_run: str | Path = ""
+    profile: str,
+    arm: str,
+    existing_run: str | Path = "",
+    config_path: str | Path | None = None,
 ) -> tuple[ExperimentConfig, Path]:
     """Config e diretório de execução de uma etapa.
 
@@ -380,7 +408,7 @@ def resolve_stage(
         path = Path(existing_run).expanduser().resolve()
         return load_run_config(path), path
     os.environ.setdefault(PROJECT_ROOT_ENV, str(find_repo_root()))
-    cfg = notebook_config(profile, arm)
+    cfg = load_config(config_path) if config_path else notebook_config(profile, arm)
     return cfg, notebook_run_dir(cfg)
 
 
@@ -443,3 +471,322 @@ def profile_summary(cfg: ExperimentConfig) -> Mapping[str, Any]:
         "generations": cfg.sr.generations,
         "output_dir": cfg.output_dir,
     }
+
+
+def stage_experiments(cfg: ExperimentConfig, stage: str) -> list[str]:
+    """Experimentos (aliases) da etapa ``P1``-``P4`` que estão em ``experiments.run``."""
+    from physics_llm_sr.experiments.matrix import ALIASES
+
+    return [e for e in HOJE_STAGES[stage] if ALIASES[e] in cfg.experiments.run]
+
+
+def plan_table(cfg: ExperimentConfig) -> pd.DataFrame:
+    """Células por experimento x modelo (baseline = ``none``) da matriz resolvida da config."""
+    from physics_llm_sr.experiments.matrix import EXPERIMENTS
+
+    rows = []
+    for name in cfg.experiments.run:
+        counts: dict[str, int] = {}
+        for cell in EXPERIMENTS[name](cfg):
+            counts[cell.llm] = counts.get(cell.llm, 0) + 1
+        # contagem BRUTA por experimento (o baseline pareado se repete entre experimentos)
+        by_model = {f"modelo:{m}": n for m, n in sorted(counts.items())}
+        rows.append({"experimento": name, **by_model})
+    out: pd.DataFrame = pd.DataFrame(rows).fillna(0)
+    return out
+
+
+def ensure_hf_access(cfg: ExperimentConfig) -> list[str]:
+    """Garante o ``HF_TOKEN`` quando um modelo restrito (Llama 2) será usado.
+
+    Devolve os modelos restritos selecionados. Sem token, levanta ``RuntimeError`` com o passo
+    a passo (antes de carregar qualquer modelo). Mistral e Falcon não exigem token.
+    """
+    from physics_llm_sr.experiments.cells import selected_models
+
+    if cfg.llm.backend != "transformers":
+        return []
+    used = set(selected_models(cfg))
+    if {"noise_robustness", "biased_noise"} & set(cfg.experiments.run):
+        used.add(cfg.experiments.noise_model)
+    gated = sorted(
+        m.name for m in cfg.llm.models if m.name in used and m.checkpoint.startswith(GATED_PREFIX)
+    )
+    if gated and not login_huggingface():
+        raise RuntimeError(
+            f"modelo(s) restrito(s) {gated} exigem HF_TOKEN. Peça acesso em "
+            "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf (aceite a licença), crie o "
+            "token em huggingface.co/settings/tokens e salve-o no Colab em Segredos (ícone de "
+            "chave) como HF_TOKEN com 'Acesso ao notebook' ligado. Ou retire 'llama2' de MODELOS."
+        )
+    return gated
+
+
+# ------------------------------------------------------------------ estimativa de tempo
+
+LATENCY_BATCH_CALLS = 10
+LATENCY_SERIAL_CALLS = 5
+LATENCY_SCENARIO = "free_fall"
+LATENCY_PROMPT = "E"
+LATENCY_TEMPLATE = "sqrt(2*{c}*height)"  # constantes distintas: sem acerto de cache na medição
+
+
+def measure_llm_latency(
+    cfg: ExperimentConfig,
+    n_batch: int = LATENCY_BATCH_CALLS,
+    n_serial: int = LATENCY_SERIAL_CALLS,
+) -> dict[str, float]:
+    """Mede s/chamada do avaliador da config: ``n_batch`` em um lote e ``n_serial`` isoladas.
+
+    Cache desligado e uma avaliação de aquecimento (carga do modelo) fora da medição.
+    """
+    import time
+
+    from physics_llm_sr.llm.inference import build_backend
+    from physics_llm_sr.llm.scoring import LLMEquationEvaluator
+    from physics_llm_sr.physics.registry import get_scenario
+    from physics_llm_sr.symbolic.expression import parse_infix
+
+    llm = cfg.llm.model_copy(update={"cache_enabled": False})
+    name = (cfg.experiments.models or [m.name for m in cfg.llm.models])[0]
+    evaluator = LLMEquationEvaluator.from_config(llm, build_backend(llm, name, track=cfg.track))
+    ctx = get_scenario(LATENCY_SCENARIO, cfg.physics).physical_context()
+    features = ("mass", "length", "height", "damping", "t")
+
+    def exprs(start: int, count: int) -> list[Any]:
+        texts = [LATENCY_TEMPLATE.format(c=f"{9.0 + 0.01 * (start + i):.2f}") for i in range(count)]
+        return [parse_infix(t, features) for t in texts]
+
+    evaluator.evaluate_many(exprs(1000, 1), ctx, LATENCY_PROMPT)  # aquecimento
+    t0 = time.perf_counter()
+    evaluator.evaluate_many(exprs(0, n_batch), ctx, LATENCY_PROMPT)
+    batched = (time.perf_counter() - t0) / n_batch
+    t0 = time.perf_counter()
+    for expr in exprs(n_batch, n_serial):
+        evaluator.evaluate(expr, ctx, LATENCY_PROMPT)
+    serial = (time.perf_counter() - t0) / n_serial
+    return {"batched_s_per_call": batched, "serial_s_per_call": serial}
+
+
+def estimate_runtime(
+    config_path: str | Path | ExperimentConfig,
+    seconds_per_call_batched: float,
+    seconds_per_call_serial: float,
+    calls_per_cell: Mapping[str, int] | None = None,
+) -> pd.DataFrame:
+    """Tempo projetado de LLM por etapa P1-P4 (``HOJE_STAGES``) a partir da matriz da config.
+
+    Só entram as etapas cujos experimentos estão em ``experiments.run``. Conta as células
+    NOVAS de cada etapa (as já pedidas por etapas anteriores são deduplicadas, como na
+    retomada do runner). Só células com LLM geram chamadas: ``calls_per_cell[sr]`` (default
+    ``DEFAULT_CALLS_PER_CELL``, hipóteses) vezes o custo por chamada (lote para DEAP/gplearn,
+    série para PySR). Não inclui o tempo de busca do SR.
+    """
+    from physics_llm_sr.experiments.matrix import build_matrix
+
+    cfg = config_path if isinstance(config_path, ExperimentConfig) else load_config(config_path)
+    calls = {**DEFAULT_CALLS_PER_CELL, **(dict(calls_per_cell) if calls_per_cell else {})}
+
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for stage in HOJE_STAGES:
+        exps = stage_experiments(cfg, stage)
+        if not exps:
+            continue
+        new = [p for p in build_matrix(cfg, only=list(exps)) if p.cell.key() not in seen]
+        seen.update(p.cell.key() for p in new)
+        llm_cells = [p.cell for p in new if not p.cell.is_baseline]
+        n_calls = sum(calls[c.sr] for c in llm_cells)
+        seconds = sum(
+            calls[c.sr]
+            * (seconds_per_call_batched if c.sr in BATCHED_ALGORITHMS else seconds_per_call_serial)
+            for c in llm_cells
+        )
+        rows.append(
+            {
+                "stage": stage,
+                "experiments": "+".join(exps),
+                "cells": len(new),
+                "llm_cells": len(llm_cells),
+                "llm_calls": n_calls,
+                "llm_seconds": seconds,
+                "llm_hours": seconds / SECONDS_PER_HOUR,
+            }
+        )
+    out: pd.DataFrame = pd.DataFrame(rows)
+    return out
+
+
+# ------------------------------------------------------------------ presets e config derivada
+
+DERIVED_DIR = "configs_derivadas"
+HASH_LENGTH = 10
+ARM_TRACKS = {
+    "replication": {"track": "paper_replication", "normalization": "literal"},
+    "extended": {"track": "extended_analysis", "normalization": "normalized"},
+}
+
+
+@dataclass(frozen=True)
+class Preset:
+    """Config base (arquivo em ``configs/``) e ajustes fixos do preset."""
+
+    config: str
+    description: str
+    patch: Mapping[str, Any] = field(default_factory=dict)
+    models: tuple[str, ...] | None = None
+
+
+#: Presets do notebook (``PRESET``). Sobrescritas do usuário (``MODELOS`` etc.) valem por cima.
+PRESETS: dict[str, Preset] = {
+    "hoje": Preset(
+        "colab_hoje_queda_livre.yaml",
+        "queda livre, Mistral, P1-P4 (extended, PySR reduzido): cerca de 4 h no A100",
+    ),
+    "hoje_literal": Preset(
+        "colab_hoje_queda_livre_literal.yaml",
+        "controle literal (paper_replication) da execução de hoje: só P1",
+    ),
+    "3_modelos_queda_livre": Preset(
+        "colab_hoje_queda_livre.yaml",
+        "hoje com Mistral, Llama 2 (exige HF_TOKEN) e Falcon",
+        models=("mistral", "llama2", "falcon"),
+    ),
+    "completo": Preset(
+        "replication.yaml",
+        "artigo inteiro: 3 cenários x 3 SR x 3 LLMs x 25 repetições, prompts A-H, ruído completo "
+        "(dias de GPU)",
+    ),
+    "completo_extended": Preset(
+        "extended.yaml", "idem, braço extended_analysis (perda normalizada, desvio declarado)"
+    ),
+    "smoke": Preset(
+        "smoke.yaml",
+        "validação mínima com avaliador simulado (minutos, sem LLM real)",
+        {
+            "experiments": {"run": ALL_EXPERIMENTS},
+            "llm": {"prompt_variants": SMOKE_PROMPTS},
+            "data": {
+                "exp4": {"levels": SMOKE_NOISE_LEVELS, "locations": SMOKE_NOISE_LOCATIONS},
+                "exp5": {"levels": SMOKE_NOISE_LEVELS, "locations": SMOKE_NOISE_LOCATIONS},
+            },
+            "output_dir": f"{SMOKE_OUTPUT_DIR}/replication",
+        },
+    ),
+}
+
+
+#: Preset -> (perfil legado, braço) usados por etapas que comparam braços (etapa 10).
+PRESET_PROFILE: dict[str, tuple[str, str]] = {
+    "hoje": ("colab_hoje", "extended"),
+    "hoje_literal": ("colab_hoje", "replication"),
+    "3_modelos_queda_livre": ("colab_hoje", "extended"),
+    "completo": ("replication", "replication"),
+    "completo_extended": ("replication", "extended"),
+    "smoke": ("smoke", "replication"),
+}
+
+
+def preset_profile(preset: str) -> tuple[str, str]:
+    """(``RUN_PROFILE``, ``ARM``) do preset; erro claro se o nome não existe."""
+    if preset not in PRESETS:
+        raise ValueError(f"PRESET inválido: {preset!r}; válidos: {tuple(PRESETS)}")
+    return PRESET_PROFILE[preset]
+
+
+def _deep_update(target: dict[str, Any], patch: Mapping[str, Any]) -> None:
+    for key, value in patch.items():
+        if isinstance(value, Mapping) and isinstance(target.get(key), dict):
+            _deep_update(target[key], value)
+        else:
+            target[key] = value if not isinstance(value, Mapping) else dict(value)
+
+
+def build_run_config(
+    base_profile: str,
+    *,
+    models: Sequence[str] | None = None,
+    scenarios: Sequence[str] | None = None,
+    experiments: Sequence[str] | None = None,
+    algorithms: Sequence[str] | None = None,
+    repetitions: int | None = None,
+    prompts: Sequence[str] | None = None,
+    noise_levels: Sequence[float] | None = None,
+    arm: str | None = None,
+    out_dir: str | Path,
+    repo_dir: str | Path | None = None,
+) -> Path:
+    """Config derivada de um preset (ou arquivo de ``configs/``) com sobrescritas validadas.
+
+    ``base_profile`` é uma chave de :data:`PRESETS` ou o nome de um YAML em ``configs/``.
+    ``None`` mantém o valor do base. ``experiments`` aceita ``exp1``..``exp5`` ou os nomes
+    completos; ``noise_levels`` vale para Exp4 e Exp5; ``arm`` (``replication``|``extended``)
+    troca track e normalização. A config final é validada por :func:`load_config` (erro claro
+    do schema) e gravada em ``<out_dir>/configs_derivadas/<hash>.yaml``. O hash cobre o
+    conteúdo derivado: se houve sobrescrita, ``output_dir`` ganha o sufixo ``_<hash>`` para que
+    execuções diferentes nunca se misturem; sem sobrescritas, vale o ``output_dir`` do base.
+    Só composição de config: nenhuma lógica científica.
+    """
+    import hashlib
+    import json
+
+    import yaml
+
+    from physics_llm_sr.experiments.matrix import resolve_experiments
+
+    preset = PRESETS.get(base_profile)
+    base_file = preset.config if preset else base_profile
+    repo = Path(repo_dir) if repo_dir is not None else find_repo_root()
+    base_path = repo / "configs" / base_file
+    data: dict[str, Any] = load_config(base_path).model_dump(mode="json")
+    if preset is not None:
+        _deep_update(data, preset.patch)
+        if models is None and preset.models is not None:
+            models = preset.models
+    base_output = data["output_dir"]
+    overridden = False
+
+    def _set(path: tuple[str, ...], value: Any) -> None:
+        nonlocal overridden
+        node = data
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = value
+        overridden = True
+
+    if arm is not None:
+        if arm not in ARM_TRACKS:
+            raise ValueError(f"arm inválido: {arm!r}; válidos: {tuple(ARM_TRACKS)}")
+        _set(("track",), ARM_TRACKS[arm]["track"])
+        _set(("loss", "normalization"), ARM_TRACKS[arm]["normalization"])
+        if arm == "replication":
+            data["llm"].update(evaluation_scope="all", top_k=None, cache_key_mode="exact")
+    if models is not None:
+        _set(("experiments", "models"), list(models))
+        if data["experiments"]["noise_model"] not in models and models:
+            _set(("experiments", "noise_model"), list(models)[0])
+    if scenarios is not None:
+        _set(("experiments", "scenarios"), list(scenarios))
+    if experiments is not None:
+        _set(("experiments", "run"), resolve_experiments(experiments, parse_config(data)))
+    if algorithms is not None:
+        _set(("experiments", "algorithms"), list(algorithms))
+    if repetitions is not None:
+        _set(("experiments", "repetitions"), repetitions)
+    if prompts is not None:
+        _set(("llm", "prompt_variants"), list(prompts))
+    if noise_levels is not None:
+        _set(("data", "exp4", "levels"), list(noise_levels))
+        _set(("data", "exp5", "levels"), list(noise_levels))
+    digest = hashlib.sha256(
+        json.dumps({**data, "output_dir": base_output}, sort_keys=True).encode()
+    ).hexdigest()[:HASH_LENGTH]
+    if overridden:
+        data["output_dir"] = f"{base_output}_{digest}"
+    parse_config(data)  # valida: ConfigError traz o campo e o motivo
+    target_dir = Path(out_dir).expanduser() / DERIVED_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / f"{digest}.yaml"
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    load_config(path)
+    return path

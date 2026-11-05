@@ -104,6 +104,8 @@ llm:
   seed: 42
   models:                             # GAP-07
     - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: ec5deb64f2c6e6fa90c1abf74a91d5c93a9669ca, quantization: fp16, infra: colab-a100}
+    - {name: llama2, checkpoint: meta-llama/Llama-2-7b-chat-hf, revision: f5db02db724555f92da89c216ac04704f23d4590, quantization: fp16, infra: colab-a100}   # restrito: exige HF_TOKEN; só roda se listado em experiments.models
+    - {name: falcon, checkpoint: tiiuae/falcon-7b-instruct, revision: 8782b5c5d8c9290412416618f36a133653e85285, quantization: fp16, infra: colab-a100}
 experiments:
   run: [llm_integration]
   repetitions: 3                      # piloto

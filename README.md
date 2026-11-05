@@ -32,7 +32,7 @@ src/physics_llm_sr/
   reproducibility/ sementes, manifestos, artefatos
   colab.py         preparo de ambiente (local/Colab) e escolha de configs para o notebook
   cli.py           linha de comando `physics-llm-sr`
-configs/           smoke, pilot, pilot_extended, colab_pilot, colab_pilot_extended, replication, extended
+configs/           smoke, pilot, pilot_extended, colab_pilot, colab_pilot_extended, colab_hoje_queda_livre(+_literal), replication, extended
 prompts/           prompt-base e variantes A–H (reconstruídos)
 references/        rastreabilidade, hipóteses, tabelas publicadas transcritas
 notebooks/         01_full_paper_reproduction.ipynb (etapas 00–18)
@@ -55,29 +55,89 @@ O backend de piloto local usa [Ollama](https://ollama.com) com `mistral:7b-instr
 
 ## Execução no Google Colab (A100)
 
-O repositório ainda não tem remoto. Passo a passo:
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/01_full_paper_reproduction.ipynb)
 
-1. **Levar o código ao Drive com o `.git`** (sem `.venv`, `results/` e `.cache/`). Duas formas; **recomendada: bundle**.
-   - *Bundle (recomendado):* na máquina local, `git bundle create physics-llm-sr.bundle --all` e envie o arquivo ao Drive
-     (por exemplo `MyDrive/physics-llm-sr.bundle`). No notebook, `REPO_URL = "/content/drive/MyDrive/physics-llm-sr.bundle"`
-     e `REPO_DIR = "/content/drive/MyDrive/physics-llm-sr"`: a primeira célula faz o `git clone` (se a pasta ainda não existe).
-   - *Pasta inteira:* envie a pasta do projeto **incluindo `.git`** para `MyDrive/physics-llm-sr` e use `REPO_DIR` com esse caminho.
-   - Não envie um zip sem extraí-lo: o notebook precisa da pasta pronta. Sem `.git` o código roda, mas o `manifest.json` grava
-     `git_sha = unknown` e a retomada não consegue comparar o código entre sessões.
-   - No Colab, o Drive não preserva permissões: rode `git -C /content/drive/MyDrive/physics-llm-sr config core.fileMode false`
-     para o repositório não aparecer como modificado (`git_dirty`) só por causa de modos de arquivo.
-2. **Abrir o notebook** `notebooks/01_full_paper_reproduction.ipynb` no Colab (Drive, "Abrir com", Google Colaboratory).
-3. **Escolher a GPU A100**: *Ambiente de execução, Alterar tipo de ambiente de execução, A100* (com High-RAM).
-4. **Configurar o Llama 2**: o checkpoint `meta-llama/Llama-2-7b-chat-hf` é restrito. Aceite a licença no Hugging Face e crie o segredo
-   `HF_TOKEN` no Colab (ícone de chave, "Acesso ao notebook" ligado). O notebook faz o login sem imprimir o token.
-5. **Ajustar os parâmetros** da primeira célula: `RUN_PROFILE = "colab_pilot"` (ou `"replication"`), `ARM`, `MOUNT_DRIVE = True`
-   (resultados e cache persistem em `DRIVE_PROJECT_DIR`), `REPO_DIR` e, se usar o bundle, `REPO_URL`.
-6. **Executar tudo.** A primeira célula é autossuficiente (não importa o pacote) e segue esta ordem: monta o Drive, clona
-   `REPO_URL` (se a pasta não existe), verifica `REPO_DIR` (se faltar, para com uma mensagem dizendo o que fazer), roda
-   `pip install -e <repo>[hf]` e ajusta `sys.path`; só depois a etapa 01 importa `physics_llm_sr.colab`. A primeira importação do PySR instala o Julia (minutos).
-7. **Pesos dos modelos no Drive (`HF_HOME_DIR`):** por padrão, com `MOUNT_DRIVE = True`, o cache do Hugging Face vai para
-   `<DRIVE_PROJECT_DIR>/hf_home`, para não rebaixar os três modelos em cada sessão. Reserve **cerca de 40 GB** livres no Drive
-   (Mistral 7B, Llama 2 7B e Falcon 7B em fp16, mais cache). Sem Drive, os pesos ficam no disco temporário do Colab e são baixados a cada sessão.
+O código vem do GitHub (`https://github.com/RodrigoSantosB/physics-llm-sr`, branch `main`) e fica no disco local do Colab
+(`/content/physics-llm-sr`); o Drive só **persiste** resultados, cache e pesos (`/content/drive/MyDrive/physics-llm-sr-runs`).
+
+1. **Abrir pelo badge** acima (ou `notebooks/01_full_paper_reproduction.ipynb` no Colab).
+2. **GPU A100 + High-RAM**: *Ambiente de execução, Alterar tipo de ambiente de execução*.
+3. **Executar tudo.** A primeira célula é autossuficiente (não importa o pacote), na ordem: monta o Drive (`MOUNT_DRIVE = True`),
+   clona `REPO_URL` (`git clone --depth 1 -b REPO_BRANCH`) ou, se `REPO_DIR` já existe, `git pull --ff-only`, verifica
+   `REPO_DIR`, roda `pip install -e <repo>[hf]` e ajusta `sys.path`; só depois a etapa 01 importa `physics_llm_sr.colab`.
+   A primeira importação do PySR instala o Julia (minutos).
+4. **Llama 2** (só fora da execução de hoje): o checkpoint `meta-llama/Llama-2-7b-chat-hf` é restrito; aceite a licença no
+   Hugging Face e crie o segredo `HF_TOKEN` no Colab. O Mistral não precisa de token.
+5. **Pesos no Drive (`HF_HOME_DIR`):** com `MOUNT_DRIVE = True` o cache do Hugging Face vai para `<DRIVE_PROJECT_DIR>/hf_home`
+   (Mistral 7B fp16 ocupa cerca de 15 GB; os três modelos, cerca de 40 GB).
+6. *Alternativa (sem GitHub):* envie a pasta do projeto com `.git` (ou um `git bundle`) ao Drive e use `REPO_DIR` (ou
+   `REPO_URL` apontando para o `.bundle`). No Drive, `git config core.fileMode false` evita `git_dirty` por modos de arquivo.
+
+## Escolhendo o que rodar
+
+Na primeira célula do notebook, `PRESET` escolhe a base e `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES` e
+`PROMPTS` (quando diferentes de `None`) a sobrescrevem, sem editar YAML. `colab.build_run_config` valida o resultado pelo schema
+(combinação inválida falha com o campo e o motivo) e grava `<PROJECT_ROOT>/configs_derivadas/<hash>.yaml`; com sobrescritas, o
+diretório de resultados ganha o sufixo `_<hash>`, então execuções diferentes não se misturam e a retomada usa a config certa.
+
+| `PRESET` | O que roda | Células | LLM estimado* |
+| --- | --- | --- | --- |
+| `"hoje"` (padrão) | queda livre, Mistral, DEAP/gplearn/PySR, 3 repetições, P1 a P4 (extended; PySR reduzido) | 117 | 5,9 h |
+| `"hoje_literal"` | controle literal (`paper_replication`), só P1 | 18 | 0,7 h |
+| `"3_modelos_queda_livre"` | hoje com Mistral, Llama 2 (exige `HF_TOKEN`) e Falcon | 189 | 11,9 h |
+| `"completo"` | artigo: 3 cenários x 3 SR x 3 LLMs x 25 repetições, prompts A a H, ruído completo (literal) | 18 675 | cerca de 983 h (41 dias) |
+| `"completo_extended"` | idem, braço extended (perda normalizada) | 18 675 | cerca de 983 h |
+| `"smoke"` | validação mínima com avaliador simulado | 20 | n/a |
+
+\* Só o tempo de LLM, com as hipóteses de 0,3 s/chamada em lote (DEAP/gplearn) e 2,5 s em série (PySR) e 300/1000/200
+chamadas únicas por célula (DEAP/gplearn/PySR); não inclui a busca do SR. A célula "Plano resolvido" do notebook mede a latência
+real e recalcula. Em `"hoje"`, P1 0,7 h, P2 2,2 h, P3 1,5 h, P4 1,5 h: por isso a ordem de prioridade e o corte em P3/P4 se faltar tempo.
+
+Exemplos:
+
+```python
+PRESET = "hoje"  # padrão
+PRESET = "hoje"
+MODELOS = ["mistral", "falcon"]  # hoje com dois modelos
+PRESET = "hoje"
+EXPERIMENTOS = ["exp1", "exp2"]  # só P1
+PRESET = "hoje"
+CENARIOS = ["free_fall", "harmonic_motion"]
+REPETICOES = 5
+PRESET = "completo"  # artigo inteiro (dias; retomável)
+```
+
+Notas: os três modelos transformers (revisões fixadas) existem em `llm.models` de todas as configs Colab. Só um modelo fica
+residente por vez (o runner descarrega o anterior) e cada um ocupa cerca de 15 GB em `HF_HOME` no Drive. O Llama 2 é restrito:
+se `"llama2"` estiver em `MODELOS`, a célula de setup exige o segredo `HF_TOKEN` e para com instruções (peça acesso em
+https://huggingface.co/meta-llama/Llama-2-7b-chat-hf); Mistral e Falcon não exigem token.
+
+## Execução de hoje no Colab
+
+Preset `"hoje"` (padrão do notebook): pipeline Exp1 a Exp6, análise e
+exportação legada **só em queda livre**, Mistral 7B fp16 (`configs/colab_hoje_queda_livre.yaml`, `extended_analysis`, perda
+normalizada), DEAP e gplearn com 100 x 50, 3 repetições, `batch_size: 16`, `max_cell_seconds: 1800`.
+**Desvio declarado:** PySR reduzido (1 população de 50, 50 ciclos, 10 iterações; early stopping ativo).
+
+1. Abra pelo badge, escolha **A100 + High-RAM**, monte o Drive quando pedido. O HF token **não** é necessário para o Mistral.
+2. **Executar tudo.** Logo após o setup, uma célula mede a latência real do Mistral (10 avaliações em lote, 5 individuais) e
+   imprime o tempo projetado de LLM por etapa. Depois rodam, nesta ordem de prioridade, cada uma persistida e retomável:
+   **P1** Exp1 baseline + Exp2 (prompt E), 18 células; **P2** Exp3 prompts A, C, E, H, 27 células novas;
+   **P3** Exp4 ruído de média zero só no alvo (1, 3, 5%), 36 novas; **P4** Exp5 ruído enviesado só no alvo (1, 5%), 36 novas.
+   Exp6 (distância estrutural) está nas métricas de cada célula. Total: 117 células.
+3. **Quanto esperar:** o orçamento é de cerca de 4 h de A100. Com as hipóteses (0,3 s/chamada em lote, 2,5 s em série;
+   DEAP 300, gplearn 1000 e PySR 200 chamadas únicas por célula com LLM) só o tempo de LLM soma cerca de 0,7 h (P1), 2,2 h (P2),
+   1,5 h (P3) e 1,5 h (P4), fora o tempo de busca; por isso a ordem é por prioridade e P3/P4 são os primeiros a cortar.
+   Célula acima de 1800 s vira `error` registrado e a execução segue.
+4. **Retomar após desconexão:** reabra o notebook (mesmos parâmetros) e execute tudo de novo; o runner pula as células
+   concluídas, que estão no Drive.
+5. **Onde ficam os resultados:** execução em `<DRIVE_PROJECT_DIR>/results/colab_hoje_queda_livre/notebook_run/`; tabelas e figuras
+   da análise em `<DRIVE_PROJECT_DIR>/results/analise_colab_hoje/` (`INDEX.md`, `tables/`, `figures/`); formato legado em
+   `<DRIVE_PROJECT_DIR>/results/legado_colab_hoje/`. A última célula mostra o `INDEX.md` e três figuras.
+6. **Baixar:** pelo Drive (pasta `physics-llm-sr-runs/results`) ou, numa célula extra,
+   `shutil.make_archive("/content/resultados", "zip", "<DRIVE_PROJECT_DIR>/results")` e `google.colab.files.download`.
+7. **Controle literal (opcional, só se sobrar tempo):** com `PRESET = "hoje_literal"` roda `configs/colab_hoje_queda_livre_literal.yaml`
+   (`paper_replication`, perda literal, só P1). A análise final o inclui como segundo braço, rotulado à parte.
 
 Sem Colab, a CLI faz o mesmo: `make pilot-colab` (veja abaixo) com `PHYSICS_LLM_SR_PROJECT_ROOT` apontando para o Drive.
 
@@ -93,7 +153,7 @@ Sem Colab, a CLI faz o mesmo: `make pilot-colab` (veja abaixo) com `PHYSICS_LLM_
 | `make report RUN_DIR=results/<cfg>/<run_id>` | Reconstrói tabelas, comparação com o artigo e figuras a partir dos arquivos persistidos (sem treinar). |
 | `make test-julia` | Testes que exigem PySR/Julia (opt-in). |
 | `make test-llm-real` | Testes com Ollama/transformers reais (opt-in). |
-| `make notebook-smoke` | Executa o notebook em `RUN_PROFILE = "smoke"` de ponta a ponta (nbconvert); saída em `results/notebook_smoke/`. |
+| `make notebook-smoke` | Executa o notebook com `PRESET = "smoke"` (via variável de ambiente) de ponta a ponta (nbconvert); saída em `results/notebook_smoke/`. |
 
 CLI direta: `uv run physics-llm-sr run --config configs/smoke.yaml [--only exp1,exp2] [--sr deap,gplearn] [--resume]` e
 `uv run physics-llm-sr report <run_dir>`. Variáveis de ambiente: `PHYSICS_LLM_SR_PROJECT_ROOT` (raiz de `results/` e `.cache/`),
@@ -104,7 +164,7 @@ CLI direta: `uv run physics-llm-sr run --config configs/smoke.yaml [--only exp1,
 `notebooks/01_full_paper_reproduction.ipynb` percorre as etapas 00 a 18 do PRD (seção 10), cada uma com explicação teórica,
 referência ao artigo, chamada ao módulo Python e visualização com interpretação. As células só importam e chamam `physics_llm_sr`. Parâmetros no topo:
 
-- `RUN_PROFILE`: `smoke`, `pilot`, `colab_pilot` ou `replication`.
+- `PRESET` (e sobrescritas `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`): veja "Escolhendo o que rodar".
 - `ARM`: `replication` (perda literal) ou `extended` (normalizada, desvio).
 - `LOAD_EXISTING_RUN` (opcional): caminho de um `run_dir` existente (por exemplo, o do piloto) para **apresentar** os resultados sem executar.
 

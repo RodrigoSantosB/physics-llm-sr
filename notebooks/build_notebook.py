@@ -70,27 +70,44 @@ Regras deste notebook:
 md(r"""
 ### Parâmetros
 
-- `RUN_PROFILE`: `"smoke"` (minutos, avaliador simulado, sem LLM real), `"pilot"` (local, Ollama), `"colab_pilot"` (Colab A100, transformers fp16) ou `"replication"` (execução completa).
-- `ARM`: `"replication"` (perda literal, GAP-01/02) ou `"extended"` (perda normalizada, desvio declarado). Os braços nunca se misturam nas tabelas de reprodução.
+- `PRESET`: `"hoje"` (padrão: queda livre no Colab A100, Mistral, ~4 h, etapas P1 a P4), `"hoje_literal"`, `"3_modelos_queda_livre"`, `"completo"` (artigo inteiro, dias de GPU), `"completo_extended"` ou `"smoke"` (minutos, avaliador simulado). Os braços literal e extended nunca se misturam nas tabelas de reprodução.
+- `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`: sobrescrevem o preset quando não são `None`. A configuração derivada é validada pelo schema e gravada em `<PROJECT_ROOT>/configs_derivadas/<hash>.yaml`; com sobrescritas, o diretório de resultados ganha o sufixo do hash (retomada correta, sem misturar execuções). Llama 2 é restrito: exige o segredo `HF_TOKEN` do Colab.
 - `LOAD_EXISTING_RUN` (opcional, vazio por padrão): caminho de um `run_dir` já gerado (por exemplo, o do piloto). Com ele, as etapas só **apresentam** os resultados existentes, sem executar nada.
 - `REPO_URL`, `REPO_DIR`, `MOUNT_DRIVE`, `DRIVE_PROJECT_DIR`, `HF_HOME_DIR`: usados só no Colab. A **primeira célula de código** é autossuficiente: monta o Drive, clona (se `REPO_URL`), verifica `REPO_DIR` (erro claro se faltar), instala o pacote e só então a etapa 01 importa `physics_llm_sr`. `HF_HOME_DIR` guarda os pesos dos modelos (cerca de 40 GB) no Drive para não baixá-los a cada sessão.
 """)
 
 code(r"""
 # Parâmetros do notebook ----------------------------------------------------------------
-RUN_PROFILE = "smoke"  # "smoke" | "pilot" | "colab_pilot" | "replication"
-ARM = "replication"  # "replication" | "extended"
+import os as _os  # só para a sobrescrita do PRESET por ambiente (make notebook-smoke / testes)
+
+# O QUE RODAR (sem editar YAML). O preset define a base; as demais variáveis, quando diferentes
+# de None, sobrescrevem o preset (a config derivada é validada e gravada em configs_derivadas/).
+PRESET = _os.environ.get("PHYSICS_LLM_SR_NOTEBOOK_PRESET", "hoje")
+# "hoje"                  queda livre, Mistral, P1-P4 (cerca de 4 h no A100)   <- padrão
+# "hoje_literal"          controle literal (paper_replication) só com P1
+# "3_modelos_queda_livre" hoje com Mistral + Llama 2 (exige HF_TOKEN) + Falcon
+# "completo"              artigo inteiro: 3 cenários x 3 SR x 3 LLMs x 25 repetições (DIAS de GPU)
+# "completo_extended"     idem, braço extended (perda normalizada)
+# "smoke"                 validação mínima, sem LLM real (minutos)
+MODELOS = None  # None = do preset; ex.: ["mistral"], ["mistral", "llama2"], ["mistral", "llama2", "falcon"]
+CENARIOS = None  # None = do preset; ex.: ["free_fall"], ["free_fall", "harmonic_motion", "damped_wave"]
+EXPERIMENTOS = None  # None = do preset; ex.: ["exp1","exp2"], ["exp1","exp2","exp3","exp4","exp5"]
+ALGORITMOS = None  # ex.: ["deap","gplearn","pysr"]
+REPETICOES = None  # ex.: 3 (hoje) | 25 (artigo)
+PROMPTS = None  # ex.: ["A","C","E","H"] | ["A","B","C","D","E","F","G","H"]
 
 LOAD_EXISTING_RUN = ""  # ex.: "results/pilot/20260101T000000-abcd1234" (apenas apresenta)
 
-# Somente Colab
-REPO_URL = ""  # opcional: .bundle ou URL git, clonado em REPO_DIR se a pasta não existir
-REPO_DIR = ""  # vazio: /content/physics-llm-sr no Colab; no ambiente local é detectado
-MOUNT_DRIVE = False  # True: monta o Drive e grava resultados/cache em DRIVE_PROJECT_DIR
-DRIVE_PROJECT_DIR = "/content/drive/MyDrive/physics-llm-sr"
+# Somente Colab. O código vem do GitHub (disco local do Colab, rápido); o Drive só PERSISTE
+# resultados, cache e pesos (PHYSICS_LLM_SR_PROJECT_ROOT = DRIVE_PROJECT_DIR).
+REPO_URL = "https://github.com/RodrigoSantosB/physics-llm-sr.git"  # alternativa: .bundle no Drive
+REPO_BRANCH = "main"
+REPO_DIR = "/content/physics-llm-sr"  # alternativa: pasta com .git no Drive (REPO_URL = "")
+MOUNT_DRIVE = True  # monta o Drive para persistir resultados/cache/HF_HOME (não para o código)
+DRIVE_PROJECT_DIR = "/content/drive/MyDrive/physics-llm-sr-runs"
 HF_HOME_DIR = ""  # vazio: <DRIVE_PROJECT_DIR>/hf_home com MOUNT_DRIVE (pesos persistem)
 
-# Preparo autossuficiente (não importa o pacote do projeto): Drive -> clone -> verificação -> pip -> path.
+# Preparo autossuficiente (não importa o pacote do projeto): Drive -> clone/pull -> verificação -> pip -> path.
 import importlib.util
 import os
 import subprocess
@@ -108,12 +125,15 @@ if IN_COLAB:
 
         drive.mount("/content/drive")
     if REPO_URL and not _repo.is_dir():
-        subprocess.run(["git", "clone", REPO_URL, str(_repo)], check=True)
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "-b", REPO_BRANCH, REPO_URL, str(_repo)], check=True
+        )
+    elif REPO_URL and (_repo / ".git").exists():
+        subprocess.run(["git", "-C", str(_repo), "pull", "--ff-only"], check=True)
     if not (_repo / "pyproject.toml").is_file():
         raise FileNotFoundError(
-            f"repositório não encontrado em {_repo} (falta pyproject.toml). Coloque o código no Drive "
-            "(pasta inteira com .git, ou git bundle + REPO_URL; veja o README), ajuste REPO_DIR e "
-            "use MOUNT_DRIVE = True se ele está no Drive."
+            f"repositório não encontrado em {_repo} (falta pyproject.toml). Preencha REPO_URL "
+            "(GitHub) para clonar, ou aponte REPO_DIR para uma pasta com o código (Drive, com .git)."
         )
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", f"{_repo}[hf]"], check=True)
     os.environ.setdefault("PHYSICS_LLM_SR_REPO_DIR", str(_repo))
@@ -145,14 +165,15 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
-from physics_llm_sr.colab import ARMS, CONFIG_FILES, PROFILES
+from physics_llm_sr.colab import PRESETS, preset_profile
 
+RUN_PROFILE, ARM = preset_profile(PRESET)  # perfil/braço legados, usados na comparação de braços
 display(
-    pd.DataFrame([{"RUN_PROFILE": p, "ARM": a, "config": f} for (p, a), f in CONFIG_FILES.items()])
+    pd.DataFrame(
+        [{"PRESET": k, "config base": p.config, "descrição": p.description} for k, p in PRESETS.items()]
+    )
 )
-display(
-    Markdown(f"Perfis: `{PROFILES}`; braços: `{ARMS}`. Selecionado: **{RUN_PROFILE} / {ARM}**.")
-)
+display(Markdown(f"Selecionado: **{PRESET}** (perfil `{RUN_PROFILE}`, braço `{ARM}`)."))
 """)
 
 code(r"""
@@ -178,7 +199,7 @@ display(
 """)
 
 md(r"""
-**4. Visualização e interpretação.** A tabela mapeia os experimentos do artigo para as etapas. A execução escolhida em `RUN_PROFILE`/`ARM` define a escala: `smoke` verifica o encanamento do pipeline; só `replication` com LLMs reais tem escala de reprodução.
+**4. Visualização e interpretação.** A tabela mapeia os experimentos do artigo para as etapas. A execução escolhida em `PRESET` define a escala: `smoke` verifica o encanamento do pipeline; só `replication` com LLMs reais tem escala de reprodução.
 """)
 
 md(r"""
@@ -201,8 +222,9 @@ import importlib.util
 from physics_llm_sr import colab
 
 plan = colab.setup_environment(
-    repo_dir=REPO_DIR or None,
+    repo_dir=(REPO_DIR or None) if IN_COLAB else None,
     repo_url=REPO_URL,
+    repo_branch=REPO_BRANCH,
     mount_drive=MOUNT_DRIVE,
     drive_dir=DRIVE_PROJECT_DIR,
     hf_home=HF_HOME_DIR,
@@ -223,12 +245,24 @@ display(
 """)
 
 code(r"""
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+from physics_llm_sr.config.paths import project_root
+
+CONFIG_PATH = colab.build_run_config(
+    PRESET,
+    models=MODELOS,
+    scenarios=CENARIOS,
+    experiments=EXPERIMENTOS,
+    algorithms=ALGORITMOS,
+    repetitions=REPETICOES,
+    prompts=PROMPTS,
+    out_dir=project_root(),
+)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
+print("configuração derivada:", CONFIG_PATH)
+print("diretório da execução:", RUN_DIR)
+gated = colab.ensure_hf_access(cfg)  # Llama 2 exige HF_TOKEN; erro claro antes de rodar
 if cfg.llm.backend == "transformers":
-    logged = colab.login_huggingface()
-    print(
-        "login no Hugging Face:", "ok" if logged else "HF_TOKEN ausente (necessário para o Llama 2)"
-    )
+    print("login no Hugging Face:", "ok" if gated else "não necessário (Mistral/Falcon)")
 else:
     print(f"backend '{cfg.llm.backend}': login no Hugging Face não é necessário")
 """)
@@ -244,6 +278,74 @@ print("PySR instalado:", importlib.util.find_spec("pysr") is not None, "| Julia:
 
 md(r"""
 **4. Visualização e interpretação.** Confira a tabela de versões (bibliotecas ausentes aparecem como `None`), a GPU e a versão do Julia. Sem Julia, as células PySR são gravadas como erro pelo runner e não impedem as demais. No Colab, escolha a GPU A100 (Ambiente de execução, Alterar tipo) antes de rodar os perfis `colab_pilot`/`replication`.
+""")
+
+md(r"""
+## Execução de hoje (perfil `colab_hoje`): latência, estimativa e etapas P1 a P4
+
+Bloco operacional da execução de hoje (queda livre, Mistral 7B fp16, A100). Não é uma etapa do artigo: mede a latência real do LLM, projeta o tempo e roda as etapas por prioridade, cada uma persistida e retomável (o runner pula células concluídas): **P1** Exp. 1 (baseline) + Exp. 2 (prompt E); **P2** Exp. 3 (prompts A, C, E, H); **P3** Exp. 4 (ruído de média zero só no alvo, 1/3/5%); **P4** Exp. 5 (ruído enviesado só no alvo, 1/5%). O Exp. 6 (distância estrutural) já está nas métricas de cada célula. Com outro `PRESET` ou sobrescritas, estas células rodam só os experimentos que estão na configuração resolvida. O PySR é reduzido hoje (desvio declarado no YAML).
+""")
+
+code(r"""
+# Plano resolvido, latência real do LLM e tempo projetado (ANTES de executar)
+import pandas as pd
+from IPython.display import Markdown, display
+from physics_llm_sr import colab
+
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
+display(Markdown(f"**Plano resolvido** (`{CONFIG_PATH.name}`): modelos {[m.name for m in cfg.llm.models if m.name in (cfg.experiments.models or [m.name for m in cfg.llm.models])]}, cenários {cfg.experiments.scenarios}, algoritmos {cfg.experiments.algorithms}, {cfg.experiments.repetitions} repetições."))
+display(colab.plan_table(cfg))
+latency = colab.measure_llm_latency(cfg)
+print(
+    f"latência medida: {latency['batched_s_per_call']:.3f} s/chamada em lote (10 avaliações), "
+    f"{latency['serial_s_per_call']:.3f} s/chamada individual (5 avaliações)"
+)
+if PRESET == "smoke":
+    print("smoke: a estimativa usa a matriz do smoke; os tempos não são representativos")
+estimate = colab.estimate_runtime(cfg, latency["batched_s_per_call"], latency["serial_s_per_call"])
+display(estimate)
+total_h = estimate["llm_hours"].sum()
+display(
+    Markdown(
+        f"Tempo projetado só de LLM (sem o tempo de busca do SR): **{total_h:.2f} h** (~{total_h / 24:.1f} dias). "
+        f"Hipóteses de chamadas por célula: {colab.DEFAULT_CALLS_PER_CELL}. Se passar do orçamento, "
+        "interrompa após P1/P2: as etapas seguintes são opcionais e retomáveis."
+    )
+)
+""")
+
+code(r"""
+# P1 - Exp. 1 (baseline) + Exp. 2 (llm_integration); só o que está em experiments.run
+from physics_llm_sr import colab
+
+RUN_DIR, summary = colab.run_notebook_stage(
+    cfg, colab.stage_experiments(cfg, "P1"), RUN_DIR, execute=not LOAD_EXISTING_RUN
+)
+print(summary if summary else "nada executado (execução existente ou fora da config)")
+""")
+
+code(r"""
+# P2 - Exp. 3 (prompt_sensitivity, prompts A, C, E, H)
+RUN_DIR, summary = colab.run_notebook_stage(
+    cfg, colab.stage_experiments(cfg, "P2"), RUN_DIR, execute=not LOAD_EXISTING_RUN
+)
+print(summary if summary else "nada executado (execução existente ou fora da config)")
+""")
+
+code(r"""
+# P3 - Exp. 4 (ruído de média zero só no alvo)
+RUN_DIR, summary = colab.run_notebook_stage(
+    cfg, colab.stage_experiments(cfg, "P3"), RUN_DIR, execute=not LOAD_EXISTING_RUN
+)
+print(summary if summary else "nada executado (execução existente ou fora da config)")
+""")
+
+code(r"""
+# P4 - Exp. 5 (ruído enviesado só no alvo)
+RUN_DIR, summary = colab.run_notebook_stage(
+    cfg, colab.stage_experiments(cfg, "P4"), RUN_DIR, execute=not LOAD_EXISTING_RUN
+)
+print(summary if summary else "nada executado (execução existente ou fora da config)")
 """)
 
 md(r"""
@@ -264,7 +366,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.reproducibility.manifests import hash_config
 from physics_llm_sr.reproducibility.seeds import derive_seed, seed_everything
 
@@ -326,7 +428,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.physics.registry import SCENARIO_NAMES, get_scenario
 from physics_llm_sr.reproducibility.seeds import derive_rng
 
@@ -391,7 +493,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.data.generator import generate_dataset
 from physics_llm_sr.data.splitting import split_by_simulation
 from physics_llm_sr.data.validation import validate_dataset
@@ -480,7 +582,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.data.generator import generate_dataset
 from physics_llm_sr.data.noise import NoiseSpec, apply_noise
 from physics_llm_sr.reproducibility.seeds import derive_rng
@@ -559,7 +661,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.data.generator import generate_dataset
 from physics_llm_sr.evaluation.metrics import regression_metrics
 from physics_llm_sr.physics.registry import get_scenario
@@ -635,7 +737,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 RUN_DIR, summary = colab.run_notebook_stage(cfg, ["exp1"], RUN_DIR, execute=not LOAD_EXISTING_RUN)
 print(
     summary
@@ -711,7 +813,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.llm.inference import build_backend
 from physics_llm_sr.llm.prompting import PromptLibrary
 from physics_llm_sr.physics.registry import get_scenario
@@ -784,7 +886,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.llm.scoring import penalty
 from physics_llm_sr.physics.registry import get_scenario
 from physics_llm_sr.symbolic.expression import parse_infix
@@ -858,7 +960,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.data.generator import generate_dataset
 from physics_llm_sr.data.splitting import split_by_simulation
 from physics_llm_sr.optimization.objective import build_objective
@@ -944,7 +1046,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.experiments.reporting import paired_table
 
 RUN_DIR, summary = colab.run_notebook_stage(cfg, ["exp2"], RUN_DIR, execute=not LOAD_EXISTING_RUN)
@@ -1039,7 +1141,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.experiments import prompt_sensitivity
 from physics_llm_sr.experiments.reporting import replot
 
@@ -1097,7 +1199,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.experiments import noise_robustness
 
 RUN_DIR, summary = colab.run_notebook_stage(cfg, ["exp4"], RUN_DIR, execute=not LOAD_EXISTING_RUN)
@@ -1167,7 +1269,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.experiments import noise_robustness
 
 RUN_DIR, summary = colab.run_notebook_stage(cfg, ["exp5"], RUN_DIR, execute=not LOAD_EXISTING_RUN)
@@ -1237,7 +1339,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.evaluation.metrics import exact_recovery, structural_metrics
 from physics_llm_sr.experiments import structural
 from physics_llm_sr.physics.registry import get_scenario
@@ -1319,7 +1421,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.evaluation.paper_comparison import load_paper_results
 from physics_llm_sr.experiments.reporting import report
 
@@ -1393,7 +1495,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.evaluation.paper_comparison import MIN_REPETITIONS_FULL
 from physics_llm_sr.evaluation.statistics import summarize_groups
 from physics_llm_sr.experiments.reporting import CONDITION, PRIMARY_METRICS, paired_table, replot
@@ -1470,7 +1572,7 @@ import matplotlib.pyplot as plt
 from IPython.display import Image, Markdown, display
 from physics_llm_sr import colab
 
-cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN)
+cfg, RUN_DIR = colab.resolve_stage(RUN_PROFILE, ARM, LOAD_EXISTING_RUN, CONFIG_PATH)
 from physics_llm_sr.experiments.reporting import REPORT_FILE, loss_term_contributions, report
 from physics_llm_sr.llm.prompting import PromptLibrary
 from physics_llm_sr.reproducibility.artifacts import load_json
@@ -1541,11 +1643,51 @@ md(r"""
 
 
 md(r"""
+## Execução de hoje (final): análise e exportação no formato legado
+
+Roda `python -m physics_llm_sr.analysis` (tabelas e figuras artigo × execução, com `INDEX.md`) e `python -m physics_llm_sr.analysis.legacy_export` (CSV, cache e tabelas no formato da reprodução anterior). Se existir a execução do controle literal (`colab_hoje_queda_livre_literal`, rodada em outra sessão com `PRESET = "hoje_literal"`), ela entra na análise como segundo braço, rotulada à parte.
+""")
+
+code(r"""
+# Execução de hoje - análise e exportação legada (final)
+import subprocess
+import sys
+from pathlib import Path
+
+from IPython.display import Image, Markdown, display
+from physics_llm_sr import colab
+from physics_llm_sr.config.paths import project_root
+
+ROOT = project_root()
+runs = [RUN_DIR]
+literal = ROOT / "results" / "colab_hoje_queda_livre_literal" / colab.NOTEBOOK_RUN_NAME
+if PRESET == "hoje" and (literal / "run.json").is_file():
+    runs.append(literal)
+TAG = {"hoje": "colab_hoje", "smoke": "smoke"}.get(PRESET, RUN_DIR.parent.name)
+ANALYSIS_DIR = ROOT / "results" / f"analise_{TAG}"
+LEGACY_DIR = ROOT / "results" / f"legado_{TAG}"
+run_args = [str(r) for r in runs]
+subprocess.run(
+    [sys.executable, "-m", "physics_llm_sr.analysis", "--runs", *run_args, "--out", str(ANALYSIS_DIR)],
+    check=True,
+)
+subprocess.run(
+    [sys.executable, "-m", "physics_llm_sr.analysis.legacy_export", "--runs", *run_args, "--out", str(LEGACY_DIR)],
+    check=True,
+)
+display(Markdown((ANALYSIS_DIR / "INDEX.md").read_text(encoding="utf-8")))
+for pattern in ("F3_bars_t5_*.png", "F2_noise_*.png", "F5_paired_*.png"):
+    for fig in sorted((ANALYSIS_DIR / "figures").glob(pattern))[:1]:
+        display(Image(filename=str(fig)))
+print("análise:", ANALYSIS_DIR, "| legado:", LEGACY_DIR)
+""")
+
+md(r"""
 ## Roteiro Colab A100
 
 1. **Runtime:** *Ambiente de execução, Alterar tipo*, GPU **A100** com **High-RAM**.
 2. **Segredo:** em *Segredos* (ícone de chave) crie `HF_TOKEN` com "Acesso ao notebook" ligado; aceite antes a licença do Llama 2 no Hugging Face.
-3. **Parâmetros:** na primeira célula, `RUN_PROFILE = "colab_pilot"`, `MOUNT_DRIVE = True` e `REPO_DIR` apontando para o repositório no Drive (ou `REPO_URL` com o `.bundle`). Os pesos dos modelos ocupam cerca de 40 GB: `HF_HOME_DIR` (padrão `<DRIVE_PROJECT_DIR>/hf_home`) precisa dessa folga no Drive.
+3. **Parâmetros:** na primeira célula (o padrão `PRESET = "hoje"` já serve; veja o README, "Escolhendo o que rodar"; `REPO_URL` já aponta para o GitHub). Os pesos dos modelos ocupam cerca de 40 GB: `HF_HOME_DIR` (padrão `<DRIVE_PROJECT_DIR>/hf_home`) precisa dessa folga no Drive.
 4. **Executar** as etapas em ordem (Ambiente de execução, Executar tudo). Estimativas do `colab_pilot` (a medir, não garantidas): cerca de 45 min com lote, cerca de 5 h sem lote, mais o PySR (0,5 a 3 h por treino com LLM; `experiments.max_cell_seconds` limita cada célula).
 5. **Onde ficam os resultados:** `<DRIVE_PROJECT_DIR>/results/colab_pilot/notebook_run/` (`results.parquet`, `manifest.json`, `figures/`) e o cache do LLM em `<DRIVE_PROJECT_DIR>/.cache/llm`.
 6. **Retomar após desconexão:** abra o notebook, repita os parâmetros e execute de novo a primeira célula e as etapas; o runner pula as células já concluídas e recarrega os resultados do Drive.

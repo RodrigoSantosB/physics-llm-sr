@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """C:notebook (T:notebook): o notebook principal só chama ``physics_llm_sr`` e executa em smoke.
 
 (a) verificação estática via AST de cada célula de código (sem ``def``/``class``/``lambda`` de
@@ -51,8 +52,17 @@ def _sections(nb: Any) -> dict[str, list[Any]]:
 def test_notebook_exists_with_run_parameters() -> None:
     nb = _load()
     first = next(c.source for c in nb.cells if c.cell_type == "code")
-    assert re.search(r'^RUN_PROFILE\s*=\s*"smoke"', first, re.MULTILINE)
-    assert re.search(r'^ARM\s*=\s*"replication"', first, re.MULTILINE)
+    assert re.search(r'^PRESET\s*=.*"hoje"\)', first, re.MULTILINE)
+    for name in ("MODELOS", "CENARIOS", "EXPERIMENTOS", "ALGORITMOS", "REPETICOES", "PROMPTS"):
+        assert re.search(rf"^{name}\s*=\s*None", first, re.MULTILINE), name
+    assert re.search(
+        r'^REPO_URL\s*=\s*"https://github.com/RodrigoSantosB/physics-llm-sr.git"',
+        first,
+        re.MULTILINE,
+    )
+    assert re.search(r'^REPO_BRANCH\s*=\s*"main"', first, re.MULTILINE)
+    assert re.search(r'^REPO_DIR\s*=\s*"/content/physics-llm-sr"', first, re.MULTILINE)
+    assert re.search(r"^MOUNT_DRIVE\s*=\s*True", first, re.MULTILINE)
     assert "LOAD_EXISTING_RUN" in first
 
 
@@ -129,7 +139,14 @@ def test_first_setup_cell_is_self_contained_and_ordered() -> None:
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.append(node.module)
     assert not any(name.startswith("physics_llm_sr") for name in imported)
-    tokens = ("drive.mount(", '"git", "clone"', "is_file()", '"pip", "install"', "sys.path.insert")
+    tokens = (
+        "drive.mount(",
+        '"git", "clone"',
+        '"pull"',
+        "is_file()",
+        '"pip", "install"',
+        "sys.path.insert",
+    )
     order = [src.index(token) for token in tokens]
     assert order == sorted(order), order
     assert "raise FileNotFoundError" in src and "REPO_URL" in src
@@ -170,6 +187,7 @@ def test_notebook_executes_in_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setenv("PHYSICS_LLM_SR_PROJECT_ROOT", str(tmp_path))
     monkeypatch.delenv("PHYSICS_LLM_SR_REPO_DIR", raising=False)
+    monkeypatch.setenv("PHYSICS_LLM_SR_NOTEBOOK_PRESET", "smoke")
     nb = _load()
     client = NotebookClient(
         nb,
