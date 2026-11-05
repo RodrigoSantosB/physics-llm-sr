@@ -91,7 +91,8 @@ def summarize_groups(
                 ci_defined=s.ci_defined,
             )
             rows.append(row)
-    return pd.DataFrame(rows)
+    frame: pd.DataFrame = pd.DataFrame(rows)
+    return frame
 
 
 @dataclass(frozen=True)
@@ -139,7 +140,9 @@ def paired_comparison(
     sd = float(np.std(d, ddof=1)) if n >= MIN_N_FOR_SD else 0.0
     dz = mean_diff / sd if sd > 0 else None
     if n_nz == 0:
-        return PairedResult(n, 0, mean_diff, None, 1.0, dz, 0.0, "degenerate", "todas as diferenças são zero")
+        return PairedResult(
+            n, 0, mean_diff, None, 1.0, dz, 0.0, "degenerate", "todas as diferenças são zero"
+        )
     if n_nz < MIN_N_FOR_SD:
         return PairedResult(
             n, n_nz, mean_diff, None, None, dz, None, "not_run", "menos de 2 diferenças não nulas"
@@ -152,4 +155,6 @@ def paired_comparison(
     ties = len(np.unique(np.abs(nz))) < n_nz
     method = "wilcoxon_approx" if (ties or n_nz > 50) else "wilcoxon_exact"
     note = f"{n - n_nz} empate(s) descartado(s); empates em |d|: {ties}"
-    return PairedResult(n, n_nz, mean_diff, float(res.statistic), float(res.pvalue), dz, rbc, method, note)
+    return PairedResult(
+        n, n_nz, mean_diff, float(res.statistic), float(res.pvalue), dz, rbc, method, note
+    )

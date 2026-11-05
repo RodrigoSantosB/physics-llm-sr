@@ -1,4 +1,4 @@
-"""T:comparacao — classificação pré-registrada (scientific_assumptions.md, 'Critérios de comparação')."""
+"""T:comparacao: classificação pré-registrada (scientific_assumptions.md)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,12 @@ def make(local_mean: float, delta_mean: float, delta_sd: float = 0.02, n: int = 
     local = sample(local_mean, 0.01, n)
     diff = sample(delta_mean, delta_sd, n)[::-1]
     return classify_cell(
-        P, "tree_distance", local, ref_published=P_REF, local_ref=local - diff, **kw  # type: ignore[arg-type]
+        P,
+        "tree_distance",
+        local,
+        ref_published=P_REF,
+        local_ref=local - diff,
+        **kw,  # type: ignore[arg-type]
     )
 
 
@@ -96,13 +101,15 @@ def _results(mode: str, reps: int = N) -> pd.DataFrame:
                     mae=v, mse=v, one_minus_r2=v, tree_distance=v,
                 )
             )  # fmt: skip
-    return pd.DataFrame(rows)
+    frame: pd.DataFrame = pd.DataFrame(rows)
+    return frame
 
 
 def _cell(out: pd.DataFrame, llm: str, metric: str) -> pd.Series:
     sub = out[(out["llm"] == llm) & (out["metric"] == metric)]
     assert len(sub) == 1
-    return sub.iloc[0]
+    row: pd.Series = sub.iloc[0]
+    return row
 
 
 def test_compare_with_paper_table5_cells() -> None:

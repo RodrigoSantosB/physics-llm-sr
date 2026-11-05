@@ -159,8 +159,7 @@ def classify_cell(
         elif not intersects and has_ref and agrees:
             indicative = "qualitativa"
         elif has_ref and (
-            (intersects and not agrees)
-            or (sign_ok and contains0 and not delta_null)
+            (intersects and not agrees) or (sign_ok and contains0 and not delta_null)
         ):
             indicative = "parcial"
         else:
@@ -348,4 +347,5 @@ def compare_with_paper(
         )  # fmt: skip
         info.update(cell.__dict__)
         out.append(info)
-    return pd.DataFrame(out)
+    frame: pd.DataFrame = pd.DataFrame(out)
+    return frame
