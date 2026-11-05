@@ -247,7 +247,8 @@ def run_cell(ctx: CellContext, cell: Cell) -> CellOutcome:
             stop_reason="time_limit" if isinstance(exc, CellTimeLimitError) else "error",
             cell_seconds=time.perf_counter() - start,
         )
-        return CellOutcome(row, None, _manifest(ctx, cell, row, full, parts, None), exc)
+        manifest = _manifest(ctx, cell, row, full, parts, None, evaluator)
+        return CellOutcome(row, None, manifest, exc)
     after = _evaluator_metrics(evaluator)
     row.update(metrics)
     row.update(mae=row["test_mae"], mse=row["test_mse"], one_minus_r2=row["test_one_minus_r2"])
@@ -256,7 +257,7 @@ def run_cell(ctx: CellContext, cell: Cell) -> CellOutcome:
     row.update(status=STATUS_OK, error=None, error_type=None)
     row["cell_seconds"] = time.perf_counter() - start
     history = _history_frame(fit, cell, row)
-    return CellOutcome(row, history, _manifest(ctx, cell, row, full, parts, fit))
+    return CellOutcome(row, history, _manifest(ctx, cell, row, full, parts, fit, evaluator))
 
 
 def _all_metrics(
@@ -337,6 +338,7 @@ def _manifest(
     full: Dataset,
     parts: Mapping[str, Dataset],
     fit: FitResult | None,
+    evaluator: PhysicsEquationEvaluator | None = None,
 ) -> dict[str, Any]:
     cfg = ctx.cfg
     base = ctx.base_manifest()
@@ -348,7 +350,12 @@ def _manifest(
         "noise": derive_seed(master, noise_seed_name(cell.scenario, cell.repetition, cell.noise)),
         "split": derive_seed(master, split_seed_name(cell.scenario, cell.repetition)),
     }
-    models = [m for m in base.llm_models if m.get("name") == cell.llm]
+    models = [dict(m) for m in base.llm_models if m.get("name") == cell.llm]
+    backend = getattr(evaluator, "backend", None)
+    metadata = getattr(backend, "model_metadata", None)
+    if callable(metadata):
+        for entry in models:
+            entry["effective"] = metadata()  # digest/revisão/prompt_format efetivos
     prompt = (
         None
         if cell.is_baseline

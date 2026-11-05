@@ -45,7 +45,9 @@ CACHE_FILENAME = "evaluations.jsonl"
 STATUS_OK = "ok"
 STATUS_ERROR = "error"
 #: Versão do formato da chave/registro (entra na chave).
-CACHE_FORMAT_VERSION = "3"  # 3: chave com algarismos significativos/modo (GAP-14)
+#: 3: chave com algarismos significativos/modo (GAP-14); 4: identidade com batch_size e
+#: prompt_format (lote com padding e template mudam a saída do transformers).
+CACHE_FORMAT_VERSION = "4"
 FAKE_BACKEND = "fake"
 OLLAMA_BACKEND = "ollama"
 
@@ -116,7 +118,9 @@ def model_identity(metadata: Mapping[str, Any]) -> dict[str, Any]:
     """Identidade efetiva do modelo a partir de ``backend.model_metadata()``.
 
     Campos: ``backend``, ``checkpoint``, ``revision`` (``digest`` do Ollama tem precedência
-    sobre a revisão configurada) e ``quantization``. O backend simulado recebe o prefixo
+    sobre a revisão configurada), ``quantization``, ``batch_size`` e ``prompt_format``
+    (transformers: o lote com padding à esquerda e o formato do prompt — chat template com
+    ou sem ``system`` ou texto simples — alteram a saída em fp16; ``None`` nos demais). O backend simulado recebe o prefixo
     ``fake::`` no checkpoint. Ollama sem digest nem revisão é recusado: o mesmo tag pode
     apontar para pesos diferentes e o cache serviria resultados de outro modelo.
     """
@@ -136,6 +140,8 @@ def model_identity(metadata: Mapping[str, Any]) -> dict[str, Any]:
         "checkpoint": checkpoint,
         "revision": None if revision is None else str(revision),
         "quantization": None if quantization is None else str(quantization),
+        "batch_size": metadata.get("batch_size"),
+        "prompt_format": metadata.get("prompt_format"),
     }
 
 

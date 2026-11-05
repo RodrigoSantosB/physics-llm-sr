@@ -255,6 +255,9 @@ def run_experiments(
     cache: dict[str, Any] = {}
 
     def evaluator_for(model: str) -> PhysicsEquationEvaluator:
+        # Um modelo residente por vez: a matriz vem agrupada por LLM e o backend anterior
+        # é descarregado ao trocar (recarregado sob demanda se voltar a ser pedido).
+        _close_backends(evaluators, keep=model)
         if model not in evaluators:
             evaluators[model] = factory(model)
         return evaluators[model]
@@ -272,6 +275,24 @@ def run_experiments(
         return man
 
     ctx = CellContext(cfg, run_id, DataProvider(cfg), evaluator_for, prompts, base_manifest)
+    try:
+        _run_planned(ctx, planned, path, done, summary, evaluators, on_cell_done, write_report)
+    finally:
+        _close_backends(evaluators)
+    return summary
+
+
+def _run_planned(
+    ctx: CellContext,
+    planned: list[PlannedCell],
+    path: Path,
+    done: set[str],
+    summary: RunSummary,
+    evaluators: dict[str, PhysicsEquationEvaluator],
+    on_cell_done: CellCallback | None,
+    write_report: bool,
+) -> None:
+    cfg, run_id = ctx.cfg, ctx.run_id
     abort = aborts_on_failure(cfg)
     for item in planned:
         key = item.cell.key()
@@ -296,7 +317,18 @@ def run_experiments(
             ) from outcome.exception
     _update_run_info(path, status=RUN_STATUS_FINISHED)
     _finish(path, cfg, run_id, evaluators, write_report)
-    return summary
+
+
+def _close_backends(
+    evaluators: dict[str, PhysicsEquationEvaluator], keep: str | None = None
+) -> None:
+    """Descarrega os backends (``close()``, se houver), exceto o de ``keep``."""
+    for name, evaluator in evaluators.items():
+        if name == keep:
+            continue
+        close = getattr(getattr(evaluator, "backend", None), "close", None)
+        if callable(close):
+            close()
 
 
 def _update_run_info(path: Path, **fields: Any) -> None:

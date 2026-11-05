@@ -77,17 +77,23 @@ class Cell:
         return dataclasses.replace(self, llm=NONE, prompt=NONE)
 
     def sort_key(self) -> tuple[object, ...]:
-        """Ordem de execução: agrupa por dados (cache) e põe o baseline antes do LLM."""
+        """Ordem de execução: baselines primeiro, depois um bloco contíguo por LLM.
+
+        Agrupar por LLM antes de SR/cenário mantém no máximo um modelo residente (o runner
+        descarrega o backend anterior ao trocar de LLM). Dentro de cada bloco a ordem é por
+        dados (cenário, repetição, ruído) e SR. O pareamento baseline × LLM não depende da
+        ordem: dados, split e semente de busca são derivados da chave da célula.
+        """
         n = self.noise
         return (
+            not self.is_baseline,
+            self.llm,
             self.scenario,
             self.repetition,
             n.noise_type,
             n.noise_location,
             n.noise_level,
             self.sr,
-            not self.is_baseline,
-            self.llm,
             self.prompt,
         )
 
