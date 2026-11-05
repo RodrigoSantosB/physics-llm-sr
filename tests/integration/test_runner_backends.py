@@ -65,6 +65,9 @@ class StubEvaluator:
     def __init__(self, backend: StubBackend) -> None:
         self.backend = backend
 
+    def evaluate(self, expression: Expr, ctx: PhysicalContext, variant: str) -> EquationEvaluation:
+        return self.evaluate_many([expression], ctx, variant)[0]
+
     def evaluate_many(
         self, expressions: Sequence[Expr], ctx: PhysicalContext, variant: str
     ) -> list[EquationEvaluation]:

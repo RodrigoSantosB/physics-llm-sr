@@ -13,6 +13,7 @@ por iteração no ``warm_start`` e checagem da versão do PySR.
 from __future__ import annotations
 
 import math
+import sys
 import types
 from pathlib import Path
 from typing import Any
@@ -121,7 +122,7 @@ def fake_native(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeJl, list[int]]:
     jl = FakeJl()
     seeds: list[int] = []
     monkeypatch.setattr(pysr_adapter, "_julia", lambda: jl)
-    monkeypatch.setitem(__import__("sys").modules, "pysr", _fake_pysr(jl, seeds))
+    monkeypatch.setitem(sys.modules, "pysr", _fake_pysr(jl, seeds))
     return jl, seeds
 
 
@@ -180,7 +181,9 @@ def test_audit_failure_is_flagged_in_metadata(
 # ------------------------------------------------------- item 4: semente por iteração
 
 
-def test_warm_start_iterations_use_derived_seeds(fake_native: tuple[FakeJl, list[int]]) -> None:
+def test_warm_start_iterations_use_derived_seeds(
+    fake_native: tuple[FakeJl, list[int]], monkeypatch: pytest.MonkeyPatch
+) -> None:
     _, seeds = fake_native
     fake = FakeEquationEvaluator.from_table({}, default=GOOD)
     cfg = _cfg(niterations=3)
@@ -190,8 +193,8 @@ def test_warm_start_iterations_use_derived_seeds(fake_native: tuple[FakeJl, list
     assert len(set(seeds)) == 3
     again: list[int] = []
     jl = FakeJl()
-    pysr_adapter._julia = lambda: jl  # type: ignore[assignment]  # restaurado pelo monkeypatch
-    __import__("sys").modules["pysr"] = _fake_pysr(jl, again)
+    monkeypatch.setattr(pysr_adapter, "_julia", lambda: jl)
+    monkeypatch.setitem(sys.modules, "pysr", _fake_pysr(jl, again))
     pysr_adapter.PySRRegressor().fit(_train(), _objective(fake), cfg)
     assert again == seeds  # determinístico
 
@@ -203,7 +206,7 @@ def test_unsupported_pysr_version_is_refused(
     fake_native: tuple[FakeJl, list[int]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     jl, seeds = fake_native
-    monkeypatch.setitem(__import__("sys").modules, "pysr", _fake_pysr(jl, seeds, "2.8.0"))
+    monkeypatch.setitem(sys.modules, "pysr", _fake_pysr(jl, seeds, "2.8.0"))
     fake = FakeEquationEvaluator.from_table({}, default=GOOD)
     with pytest.raises(pysr_adapter.UnsupportedPysrError, match=r"2\.8\.0"):
         pysr_adapter.PySRRegressor().fit(_train(), _objective(fake), _cfg())
