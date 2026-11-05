@@ -121,6 +121,10 @@ class DampedWaveScenario:
         """Amostra uma simulação completa."""
         return simulate_scenario(self, rng, ranges, n_points, max_steps)
 
+    def equivalent_ground_truths(self) -> tuple[str, ...]:
+        """Formas infixas fisicamente equivalentes; a primeira é a GT do artigo."""
+        return (self.physical_context().ground_truth,)
+
     def physical_context(self) -> PhysicalContext:
         """Contexto físico com GT infixa."""
         c = self.config
