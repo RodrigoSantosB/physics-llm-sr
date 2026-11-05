@@ -1,4 +1,4 @@
-"""Gera ``02_paper_comparison.ipynb`` (``uv run python notebooks/build_paper_comparison.py``).
+"""Gera ``04_comparacao_com_artigo.ipynb`` (``uv run python notebooks/build_04_comparacao_com_artigo.py``).
 
 O .ipynb versionado é a saída deste script. Células só chamam ``physics_llm_sr.analysis``.
 """
@@ -6,11 +6,16 @@ O .ipynb versionado é a saída deste script. Células só chamam ``physics_llm_
 from __future__ import annotations
 
 import hashlib
+import sys
 from pathlib import Path
 
 import nbformat
 
-NOTEBOOK = Path(__file__).resolve().parent / "02_paper_comparison.ipynb"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import nb_common  # noqa: E402
+
+NAME = "04_comparacao_com_artigo"
+NOTEBOOK = Path(__file__).resolve().parent / "04_comparacao_com_artigo.ipynb"
 KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
 CELLS: list[tuple[str, str]] = []
 
@@ -22,7 +27,7 @@ def md(text: str) -> None:
 
 def code(text: str) -> None:
     """Acrescenta uma célula de código."""
-    CELLS.append(("code", text.strip("\n")))
+    CELLS.append(("code", nb_common.format_code(text.strip("\n"))))
 
 
 def build() -> nbformat.NotebookNode:
@@ -55,15 +60,23 @@ visualizações próprias das tabelas publicadas. Publicado = vazado/tracejado; 
 Célula sem dado local aparece como `n/e` (não executado), nunca como zero. Cada artefato leva o rótulo de
 modo/trilha: **piloto e smoke são execuções reduzidas e não são reprodução.**
 
-As células só chamam `physics_llm_sr.analysis`. Defina `RUN_DIRS` (ou a variável `PHYSICS_LLM_SR_RUN_DIRS`).
+As células só chamam `physics_llm_sr.analysis`. Defina `RUN_DIRS` (ou a variável `PHYSICS_LLM_SR_RUN_DIRS`); caminhos relativos valem a partir da raiz do projeto (no Colab, o Drive). A primeira célula de código prepara o ambiente (Drive, clone/pull do GitHub, `pip install -e` sem LLM).
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/04_comparacao_com_artigo.ipynb)
 """)
-code(r"""
+PARAMETERS = r"""
+# =====================================================================================
+# PARÂMETROS DO NOTEBOOK 04 (edite SÓ esta célula)
+# =====================================================================================
+# Caminhos relativos são resolvidos na RAIZ DO PROJETO (no Colab, o Drive:
+# /content/drive/MyDrive/physics-llm-sr-runs). Uso principal: baseline (01) x 1 LLM (02).
 RUN_DIRS = [
-    # "results/pilot/<run_id>",
-    # "results/pilot_extended/<run_id>",
+    # "results/nb01_baseline/<hash>/notebook_run",
+    # "results/nb02_free_fall_benchmark_mistral/<hash>/notebook_run",
 ]
-OUT_DIR = None  # None => results/analysis/<timestamp>/
-""")
+OUT_DIR = None  # None => <raiz>/results/nb04_analise/<timestamp>/
+"""
+code(nb_common.setup_cell(parameters=PARAMETERS, pip_extras="", hf_home=False))
 code(r"""
 from physics_llm_sr.analysis import notebook as nb
 

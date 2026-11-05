@@ -211,6 +211,7 @@ def run_experiments(
     resume: bool = False,
     only: Iterable[str] | None = None,
     algorithms: Sequence[str] | None = None,
+    arm: str | None = None,
     evaluator_factory: EvaluatorFactory | None = None,
     on_cell_done: CellCallback | None = None,
     write_report: bool = True,
@@ -225,6 +226,7 @@ def run_experiments(
         resume: pula células já concluídas (``status='ok'``) no ``run_dir``.
         only: subconjunto de experimentos (``exp1``..``exp5`` ou nomes canônicos).
         algorithms: subconjunto de algoritmos SR.
+        arm: ``"baseline"`` (só células sem LLM) ou ``"llm"`` (só com LLM); ``None`` = ambos.
         evaluator_factory: ``modelo -> avaliador``; default = backend da config
             (``build_backend`` + ``LLMEquationEvaluator.from_config``).
         on_cell_done: chamado após cada célula executada (e gravada).
@@ -237,7 +239,7 @@ def run_experiments(
         CodeChangedError: retomada com código diferente sem ``allow_code_change``.
     """
     path, run_id = _open_run_dir(cfg, run_dir, resume, allow_code_change)
-    planned = build_matrix(cfg, only, algorithms)
+    planned = build_matrix(cfg, only, algorithms, arm)
     _update_run_info(
         path,
         status=RUN_STATUS_RUNNING,

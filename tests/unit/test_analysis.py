@@ -336,3 +336,14 @@ def test_cli_on_real_smoke(tmp_path: Path) -> None:
     assert smoke is not None
     run_analysis([smoke], tmp_path / "o")
     assert (tmp_path / "o" / "INDEX.md").exists()
+
+
+def test_notebook_run_dirs_resolve_relative_to_project_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from physics_llm_sr.analysis import notebook
+
+    monkeypatch.setenv("PHYSICS_LLM_SR_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv(notebook.RUN_DIRS_ENV, raising=False)
+    got = notebook.resolve_run_dirs(["results/nb01_baseline/x", str(tmp_path / "abs")])
+    assert got == [tmp_path / "results/nb01_baseline/x", tmp_path / "abs"]

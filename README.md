@@ -32,10 +32,10 @@ src/physics_llm_sr/
   reproducibility/ sementes, manifestos, artefatos
   colab.py         preparo de ambiente (local/Colab) e escolha de configs para o notebook
   cli.py           linha de comando `physics-llm-sr`
-configs/           smoke, pilot, pilot_extended, colab_pilot, colab_pilot_extended, colab_hoje_queda_livre(+_literal), replication, extended
+configs/           smoke, pilot, pilot_extended, colab_pilot, colab_pilot_extended, colab_hoje_queda_livre(+_literal), replication, extended, nb01_baseline, nb02_um_llm
 prompts/           prompt-base e variantes A–H (reconstruídos)
 references/        rastreabilidade, hipóteses, tabelas publicadas transcritas
-notebooks/         01_full_paper_reproduction.ipynb (etapas 00–18)
+notebooks/         01_baseline_sem_llm, 02_um_llm_um_caso, 03_pipeline_completo (etapas 00–18), 04_comparacao_com_artigo (+ build_*.py)
 tests/             unit, integration, scientific, e2e
 ```
 
@@ -53,18 +53,39 @@ O PySR precisa de Julia, instalado automaticamente na primeira importação (lev
 O backend de piloto local usa [Ollama](https://ollama.com) com `mistral:7b-instruct`, `llama2:7b-chat` e `falcon:7b-instruct`
 (quantização Q4, um desvio declarado).
 
-## Execução no Google Colab (A100)
+## Notebooks (Google Colab)
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/01_full_paper_reproduction.ipynb)
+Quatro notebooks, **sem interseção entre si e fechados em si**: cada um tem a própria célula de preparo (monta o Drive, clona/atualiza o GitHub,
+`pip install -e`), a própria pasta de resultados e a própria config derivada, e **não lê saídas dos outros**. Parâmetros no topo (nada fixo no meio),
+passo a passo com "O que verificar" em cada etapa, e geradores versionados em `notebooks/build_*.py`.
 
-O código vem do GitHub (`https://github.com/RodrigoSantosB/physics-llm-sr`, branch `main`) e fica no disco local do Colab
-(`/content/physics-llm-sr`); o Drive só **persiste** resultados, cache e pesos (`/content/drive/MyDrive/physics-llm-sr-runs`).
+| Notebook | Abrir no Colab | Ambiente | Tempo estimado* | O que responde |
+| --- | --- | --- | --- | --- |
+| **01** `01_baseline_sem_llm` | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/01_baseline_sem_llm.ipynb) | **CPU** basta (sem transformers/torch/HF) | padrão (3 cenários x 3 SR x 3 repetições, ruído no alvo 1/3/5%): 162 células, cerca de 2,3 h (PySR domina) | Quão bem a SR funciona **sem LLM** (Exp. 1 + baseline de Exp. 4/5): métricas, equações vs GT, convergência, robustez a ruído, comparação com as linhas "sem LLM" publicadas (Tabelas 3, 4, 5). Saída: `results/nb01_baseline/<hash>/`. |
+| **02** `02_um_llm_um_caso` | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/02_um_llm_um_caso.ipynb) | **GPU A100 (High-RAM)**; Llama 2 exige `HF_TOKEN` | queda livre, Mistral, 3 repetições: `benchmark` ~0,7 h de LLM, `prompts` ~3 h, `ruido` e `ruido_enviesado` ~1,5 h cada (mais a busca do SR) | **Qual o impacto de inserir o LLM** em um cenário, um experimento e um LLM: baseline pareado próprio vs com LLM (Wilcoxon), teste do LLM em 3 expressões, equações lado a lado com as avaliações do LLM, decomposição da perda, convergência, custo. Saída: `results/nb02_<cenario>_<experimento>_<llm>/<hash>/`. |
+| **03** `03_pipeline_completo` | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/03_pipeline_completo.ipynb) | **GPU A100 (High-RAM)** | preset `"hoje"`: cerca de 4 a 6 h; `"completo"`: dias | O pipeline do artigo inteiro (etapas 00 a 18, `PRESET`s e seletores), Exp. 1 a 7. Saída: `results/nb03_<config>/`. |
+| **04** `04_comparacao_com_artigo` | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/RodrigoSantosB/physics-llm-sr/blob/main/notebooks/04_comparacao_com_artigo.ipynb) | CPU | minutos (só lê execuções existentes) | Como os resultados locais se comparam às Tabelas 2 a 6 do artigo (tabelas e figuras F1–F8 com leitura guiada). |
 
-1. **Abrir pelo badge** acima (ou `notebooks/01_full_paper_reproduction.ipynb` no Colab).
-2. **GPU A100 + High-RAM**: *Ambiente de execução, Alterar tipo de ambiente de execução*.
+\* Estimativas por hipótese (a medir); só tempo de LLM nos notebooks 02 e 03 (veja "Escolhendo o que rodar").
+
+**Parâmetros principais.** 01: `CENARIOS`, `ALGORITMOS`, `REPETICOES` (3; 25 = artigo), `NIVEIS_RUIDO`, `LOCALIZACOES`, `BRACO` (`literal` | `normalized`).
+02: `CENARIO` (um), `EXPERIMENTO` (`benchmark` | `prompts` | `ruido` | `ruido_enviesado`), `LLM` (`mistral` | `llama2` | `falcon`), `ALGORITMOS`, `REPETICOES`, `PROMPT`, `PROMPTS`, `BRACO` (padrão `normalized`:
+no `literal` o termo do LLM é dominado pelo erro, GAP-02). Parâmetros inválidos falham com mensagem clara **antes** de rodar.
+
+**Reprodutibilidade entre 01 e 02 (checagem opcional, sem um ler o outro).** Com as mesmas sementes, o baseline do 02 para um caso coincide com o do 01 para o mesmo caso e a mesma repetição
+(chaves de célula e sementes derivadas idênticas; use o mesmo `BRACO`). Rode o 01 com `CENARIOS=[<caso>]` e compare a coluna `expression` e as métricas com o Passo 4 do 02.
+Um teste automatizado (`tests/integration/test_nb_baseline_reproducibility.py`) confere isso em smoke.
+
+**Smoke (`make notebook-smoke`).** Executa 01, 02 e 03 de ponta a ponta com a variável `PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1` (backend `fake`, tamanhos mínimos, sem PySR/GPU);
+alvos por notebook: `make notebook-smoke-01`, `-02`, `-03`. Os notebooks executados e os resultados do smoke ficam em `results/notebook_smoke/`.
+
+### Passo a passo no Colab (notebooks 02 e 03: A100)
+
+1. **Abrir pelo badge** do notebook na tabela acima.
+2. **GPU A100 + High-RAM** (02 e 03) ou CPU (01 e 04): *Ambiente de execução, Alterar tipo de ambiente de execução*.
 3. **Executar tudo.** A primeira célula é autossuficiente (não importa o pacote), na ordem: monta o Drive (`MOUNT_DRIVE = True`),
    clona `REPO_URL` (`git clone --depth 1 -b REPO_BRANCH`) ou, se `REPO_DIR` já existe, `git pull --ff-only`, verifica
-   `REPO_DIR`, roda `pip install -e <repo>[hf]` e ajusta `sys.path`; só depois a etapa 01 importa `physics_llm_sr.colab`.
+   `REPO_DIR`, roda `pip install -e <repo>[hf]` (o 01 instala sem o extra `hf`) e ajusta `sys.path`; só depois o notebook importa `physics_llm_sr`.
    A primeira importação do PySR instala o Julia (minutos).
 4. **Llama 2** (só fora da execução de hoje): o checkpoint `meta-llama/Llama-2-7b-chat-hf` é restrito; aceite a licença no
    Hugging Face e crie o segredo `HF_TOKEN` no Colab. O Mistral não precisa de token.
@@ -78,10 +99,10 @@ O código vem do GitHub (`https://github.com/RodrigoSantosB/physics-llm-sr`, bra
 
 ## Escolhendo o que rodar
 
-Na primeira célula do notebook, `PRESET` escolhe a base e `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES` e
+Na primeira célula do **notebook 03**, `PRESET` escolhe a base e `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES` e
 `PROMPTS` (quando diferentes de `None`) a sobrescrevem, sem editar YAML. `colab.build_run_config` valida o resultado pelo schema
-(combinação inválida falha com o campo e o motivo) e grava `<PROJECT_ROOT>/configs_derivadas/<hash>.yaml`; com sobrescritas, o
-diretório de resultados ganha o sufixo `_<hash>`, então execuções diferentes não se misturam e a retomada usa a config certa.
+(combinação inválida falha com o campo e o motivo) e grava `<PROJECT_ROOT>/configs_derivadas/nb03/<hash>.yaml`; com sobrescritas, o
+diretório de resultados (`results/nb03_<config>`) ganha o sufixo `_<hash>`, então execuções diferentes não se misturam e a retomada usa a config certa.
 
 | `PRESET` | O que roda | Células | LLM estimado* |
 | --- | --- | --- | --- |
@@ -156,20 +177,19 @@ Sem Colab, a CLI faz o mesmo: `make pilot-colab` (veja abaixo) com `PHYSICS_LLM_
 | `make report RUN_DIR=results/<cfg>/<run_id>` | Reconstrói tabelas, comparação com o artigo e figuras a partir dos arquivos persistidos (sem treinar). |
 | `make test-julia` | Testes que exigem PySR/Julia (opt-in). |
 | `make test-llm-real` | Testes com Ollama/transformers reais (opt-in). |
-| `make notebook-smoke` | Executa o notebook com `PRESET = "smoke"` (via variável de ambiente) de ponta a ponta (nbconvert); saída em `results/notebook_smoke/`. |
+| `make notebook-smoke` | Executa os notebooks 01, 02 e 03 em modo smoke (variável `PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1`: backend `fake`, tamanhos mínimos, sem PySR) de ponta a ponta (nbconvert); saída em `results/notebook_smoke/`. Um alvo por notebook: `notebook-smoke-01`, `-02`, `-03`. |
 
 CLI direta: `uv run physics-llm-sr run --config configs/smoke.yaml [--only exp1,exp2] [--sr deap,gplearn] [--resume]` e
 `uv run physics-llm-sr report <run_dir>`. Variáveis de ambiente: `PHYSICS_LLM_SR_PROJECT_ROOT` (raiz de `results/` e `.cache/`),
 `PHYSICS_LLM_SR_PROMPTS_DIR` e `PHYSICS_LLM_SR_REFERENCES_DIR` (o notebook as define).
 
-## Notebook
+## Notebooks
 
-`notebooks/01_full_paper_reproduction.ipynb` percorre as etapas 00 a 18 do PRD (seção 10), cada uma com explicação teórica,
-referência ao artigo, chamada ao módulo Python e visualização com interpretação. As células só importam e chamam `physics_llm_sr`. Parâmetros no topo:
-
-- `PRESET` (e sobrescritas `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`): veja "Escolhendo o que rodar".
-- `ARM`: `replication` (perda literal) ou `extended` (normalizada, desvio).
-- `LOAD_EXISTING_RUN` (opcional): caminho de um `run_dir` existente (por exemplo, o do piloto) para **apresentar** os resultados sem executar.
+- `notebooks/01_baseline_sem_llm.ipynb`, `02_um_llm_um_caso.ipynb` e `03_pipeline_completo.ipynb`: veja a tabela "Notebooks (Google Colab)". Cada passo tem explicação, chamada ao módulo Python,
+  visualização e "O que verificar"; as células só importam e chamam `physics_llm_sr` (nenhuma lógica científica nas células).
+- O **03** percorre as etapas 00 a 18 do PRD (seção 10), cada uma com explicação teórica, referência ao artigo, chamada ao módulo e interpretação. Parâmetros no topo:
+  `PRESET` (e sobrescritas `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`; veja "Escolhendo o que rodar") e `LOAD_EXISTING_RUN` (opcional: caminho de um `run_dir` existente para **apresentar** os resultados sem executar).
+- Os `.ipynb` são gerados por `notebooks/build_01_baseline.py`, `build_02_um_llm.py` e `build_03_pipeline_completo.py` (`uv run python notebooks/build_0X_*.py`); `tests/e2e/test_notebook.py` confere que cada `.ipynb` corresponde ao seu gerador.
 
 ## Comparação artigo × experimentos locais
 
@@ -177,8 +197,8 @@ referência ao artigo, chamada ao módulo Python e visualização com interpreta
 `python -m physics_llm_sr.analysis --runs ... --out ...`) gera, a partir dos arquivos persistidos, tabelas
 (CSV, Markdown, LaTeX booktabs e `tabelas.tex` mestre), figuras F1–F8 (PNG 200 dpi e PDF) e um `INDEX.md` com a
 tabela do artigo correspondente e o rótulo de execução de cada artefato. Aceita qualquer modo/trilha. Célula sem
-dado local aparece como `n/e` (não executado), nunca como zero. O notebook `notebooks/02_paper_comparison.ipynb`
-(gerado por `notebooks/build_paper_comparison.py`) apresenta tudo com perguntas de leitura guiada.
+dado local aparece como `n/e` (não executado), nunca como zero. O notebook `notebooks/04_comparacao_com_artigo.ipynb`
+(gerado por `notebooks/build_04_comparacao_com_artigo.py`) apresenta tudo com perguntas de leitura guiada.
 
 ## Exportação no formato legado
 

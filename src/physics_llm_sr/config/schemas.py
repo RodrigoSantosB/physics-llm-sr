@@ -353,6 +353,8 @@ class ExperimentsConfig(_Strict):
     noise_prompt: PromptVariant = "E"
     #: Limite opcional de tempo de parede por célula (s); excedido -> célula ``error``.
     max_cell_seconds: PositiveFloat | None = None
+    #: Só células sem LLM (baseline, ``w3 = 0``): nenhum modelo é carregado nem exigido.
+    baseline_only: bool = False
 
 
 class ExperimentConfig(_Strict):
@@ -408,7 +410,11 @@ class ExperimentConfig(_Strict):
         if unknown:
             raise ValueError(f"experiments.models referencia modelos não declarados: {unknown}")
         noise_runs = {"noise_robustness", "biased_noise"} & set(self.experiments.run)
-        if noise_runs and self.experiments.noise_model not in declared:
+        if (
+            noise_runs
+            and not self.experiments.baseline_only
+            and (self.experiments.noise_model not in declared)
+        ):
             raise ValueError(
                 f"experiments.noise_model={self.experiments.noise_model!r} não declarado em "
                 f"llm.models (exigido por {sorted(noise_runs)})"

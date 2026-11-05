@@ -1,8 +1,15 @@
-.PHONY: install check test test-julia test-llm-real notebook-smoke lint format \
+.PHONY: install check test test-julia test-llm-real notebook-smoke notebook-smoke-01 \
+	notebook-smoke-02 notebook-smoke-03 clean-notebook-smoke lint format \
 	smoke pilot pilot-colab report compare export-legado
 
 NOT_OPT_IN = not slow and not julia and not llm_real
-NOTEBOOK = notebooks/01_full_paper_reproduction.ipynb
+NB01 = notebooks/01_baseline_sem_llm.ipynb
+NB02 = notebooks/02_um_llm_um_caso.ipynb
+NB03 = notebooks/03_pipeline_completo.ipynb
+SMOKE_ROOT = $(CURDIR)/results/notebook_smoke/root
+NB_EXEC = uv run jupyter nbconvert --to notebook --execute \
+	--ExecutePreprocessor.timeout=3600 --ExecutePreprocessor.kernel_name=python3 \
+	--output-dir results/notebook_smoke
 
 install:
 	uv sync
@@ -27,13 +34,29 @@ test-julia:
 test-llm-real:
 	uv run pytest -m llm_real
 
-# Executa o notebook principal em RUN_PROFILE="smoke" (valor padrão do notebook), de ponta a ponta,
-# sem LLM real. O notebook executado vai para results/notebook_smoke/.
-notebook-smoke:
-	PHYSICS_LLM_SR_NOTEBOOK_PRESET=smoke \
-	uv run jupyter nbconvert --to notebook --execute $(NOTEBOOK) \
-		--ExecutePreprocessor.timeout=3600 --ExecutePreprocessor.kernel_name=python3 \
-		--output-dir results/notebook_smoke --output 01_full_paper_reproduction.executed.ipynb
+# Executa os notebooks 01, 02 e 03 em modo smoke, de ponta a ponta, sem LLM real nem GPU: a variável
+# PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 troca para o avaliador simulado (backend fake) e tamanhos mínimos
+# (sem PySR). Os resultados do smoke ficam em results/notebook_smoke/ (raiz de projeto própria) e os
+# notebooks executados em results/notebook_smoke/*.executed.ipynb. O 04 (comparação com o artigo) lê
+# execuções existentes e não faz parte do smoke.
+notebook-smoke: clean-notebook-smoke notebook-smoke-01 notebook-smoke-02 notebook-smoke-03
+
+# O smoke sempre parte do zero (a retomada exige o mesmo código/commit).
+clean-notebook-smoke:
+	rm -rf results/notebook_smoke
+
+notebook-smoke-01:
+	PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
+	$(NB_EXEC) $(NB01) --output 01_baseline_sem_llm.executed.ipynb
+
+notebook-smoke-02:
+	PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
+	$(NB_EXEC) $(NB02) --output 02_um_llm_um_caso.executed.ipynb
+
+notebook-smoke-03:
+	PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 PHYSICS_LLM_SR_NOTEBOOK_PRESET=smoke \
+	PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
+	$(NB_EXEC) $(NB03) --output 03_pipeline_completo.executed.ipynb
 
 # ---------------------------------------------------------------- execução de experimentos
 # RESUME=1 retoma a execução mais recente com a mesma config (células concluídas são puladas).
