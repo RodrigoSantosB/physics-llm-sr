@@ -146,9 +146,7 @@ def test_gap_has_required_fields(gap_id: str) -> None:
         r"`([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)+)`",
         _field_value(section, "Chave de configuração") or "",
     )
-    assert config_keys, (
-        f"{gap_id}: chave de configuração deve ser pontilhada e entre crases"
-    )
+    assert config_keys, f"{gap_id}: chave de configuração deve ser pontilhada e entre crases"
     evidence = _field_value(section, "Evidência") or ""
     assert re.search(r"p\.\s?\d+|suplemento|Tabela \d", evidence), (
         f"{gap_id}: evidência sem página/fonte"
@@ -159,13 +157,9 @@ def test_gap_has_required_fields(gap_id: str) -> None:
 def test_gap_status_is_allowed(gap_id: str) -> None:
     section = _gap_sections(_read(ASSUMPTIONS))[gap_id]
     status = (_field_value(section, "Status") or "").lower()
-    tokens = {
-        token.strip(" .") for token in re.split(r"[+,/]", status) if token.strip(" .")
-    }
+    tokens = {token.strip(" .") for token in re.split(r"[+,/]", status) if token.strip(" .")}
     assert tokens, f"{gap_id}: status vazio"
-    assert tokens <= ALLOWED_STATUS, (
-        f"{gap_id}: status inválido {tokens - ALLOWED_STATUS}"
-    )
+    assert tokens <= ALLOWED_STATUS, f"{gap_id}: status inválido {tokens - ALLOWED_STATUS}"
 
 
 def test_gap06_defines_operator_set_per_algorithm() -> None:
@@ -199,10 +193,7 @@ def test_tree_distance_examples_are_consistent() -> None:
     for example_id, total, count, distance in rows:
         expected = Decimal(total) / Decimal(count)
         published = Decimal(distance)
-        tolerance = (
-            Decimal(1).scaleb(-(len(distance.split(".")[1]) if "." in distance else 0))
-            / 2
-        )
+        tolerance = Decimal(1).scaleb(-(len(distance.split(".")[1]) if "." in distance else 0)) / 2
         assert abs(expected - published) <= tolerance, (
             f"{example_id}: {total}/{count} != {distance}"
         )
@@ -212,9 +203,7 @@ def test_tree_distance_examples_are_consistent() -> None:
 def test_inconsistencies_are_registered() -> None:
     text = _read(ASSUMPTIONS)
     for inc in ("INC-01", "INC-02", "INC-03", "INC-04", "INC-05", "INC-06"):
-        assert re.search(rf"^\|\s*{inc}\s*\|", text, re.MULTILINE), (
-            f"{inc} não registrada"
-        )
+        assert re.search(rf"^\|\s*{inc}\s*\|", text, re.MULTILINE), f"{inc} não registrada"
 
 
 def test_preregistered_comparison_criteria() -> None:
@@ -238,19 +227,11 @@ def test_preregistered_comparison_criteria() -> None:
 def test_traceability_covers_all_requirements() -> None:
     text = _read(TRACEABILITY)
     for requirement in REQUIREMENT_IDS:
-        assert re.search(rf"\b{requirement}\b", text), (
-            f"{requirement} ausente na matriz"
-        )
+        assert re.search(rf"\b{requirement}\b", text), f"{requirement} ausente na matriz"
     matrix = re.search(r"^## Matriz\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     assert matrix, "seção '## Matriz' ausente"
-    rows = [
-        line
-        for line in matrix.group(1).splitlines()
-        if line.startswith("|") and "T:" in line
-    ]
-    assert len(rows) >= 13, (
-        "matriz deve ter linhas ligando seção → requisito → módulo → teste"
-    )
+    rows = [line for line in matrix.group(1).splitlines() if line.startswith("|") and "T:" in line]
+    assert len(rows) >= 13, "matriz deve ter linhas ligando seção → requisito → módulo → teste"
     for row in rows:
         assert re.search(r"\bR\d{1,2}\b", row), f"linha sem requisito: {row}"
         assert re.search(
@@ -298,9 +279,7 @@ def test_result_csv_schema_and_types(filename: str) -> None:
         assert row["metric"] in METRIC_DECIMALS
         match = DECIMAL_PATTERN.match(row["value"])
         assert match, f"valor não decimal: {row['value']!r}"
-        assert len(match.group(1)) == METRIC_DECIMALS[row["metric"]], (
-            f"precisão inesperada: {row}"
-        )
+        assert len(match.group(1)) == METRIC_DECIMALS[row["metric"]], f"precisão inesperada: {row}"
         value = float(row["value"])
         assert value >= 0.0
         if row["metric"] in {"tree_distance", "one_minus_r2"}:
