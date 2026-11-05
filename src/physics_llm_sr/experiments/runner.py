@@ -24,18 +24,17 @@ from typing import Any
 
 from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.config.schemas import ExperimentConfig
-from physics_llm_sr.core_types import Mode, Track
-from physics_llm_sr.experiments import (
-    baseline,
-    biased_noise,
-    llm_integration,
-    noise_robustness,
-    prompt_sensitivity,
-)
 from physics_llm_sr.experiments.cells import Cell
 from physics_llm_sr.experiments.data_provider import DataProvider
 from physics_llm_sr.experiments.execution import CellContext, CellOutcome, is_strict, run_cell
+from physics_llm_sr.experiments.matrix import (
+    EXPERIMENTS,
+    PlannedCell,
+    build_matrix,
+    resolve_experiments,
+)
 from physics_llm_sr.experiments.reporting import (
+    RUN_STATUS_ABORTED,
     methodological_view,
     replot,
     report,
@@ -78,37 +77,16 @@ __all__ = [
 ]
 
 LOGGER = logging.getLogger(__name__)
-#: Experimento -> gerador de células (ordem = Exp1..Exp5). Exp6 está nas métricas de cada
-#: célula; Exp7 é a comparação feita em :func:`report`.
-EXPERIMENTS: dict[str, Callable[[ExperimentConfig], list[Cell]]] = {
-    baseline.NAME: baseline.cells,
-    llm_integration.NAME: llm_integration.cells,
-    prompt_sensitivity.NAME: prompt_sensitivity.cells,
-    noise_robustness.NAME: noise_robustness.cells,
-    biased_noise.NAME: biased_noise.cells,
-}
-ALIASES = {
-    "exp1": baseline.NAME,
-    "exp2": llm_integration.NAME,
-    "exp3": prompt_sensitivity.NAME,
-    "exp4": noise_robustness.NAME,
-    "exp5": biased_noise.NAME,
-}
-DERIVED = {"exp6": "comparação estrutural (métricas de cada célula)", "exp7": "use `report`"}
 EvaluatorFactory = Callable[[str], PhysicsEquationEvaluator]
 CellCallback = Callable[[Cell, CellOutcome], None]
 
 
+RUN_STATUS_RUNNING = "running"
+RUN_STATUS_FINISHED = "finished"
+
+
 class ExperimentAbortedError(RuntimeError):
     """Falha de célula em full/paper_replication: a execução é interrompida."""
-
-
-@dataclass(frozen=True)
-class PlannedCell:
-    """Célula da matriz e os experimentos que a pedem (células iguais são deduplicadas)."""
-
-    cell: Cell
-    experiments: tuple[str, ...]
 
 
 @dataclass
@@ -122,45 +100,6 @@ class RunSummary:
     skipped: int = 0
     failed: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
-
-
-def resolve_experiments(names: Iterable[str] | None, cfg: ExperimentConfig) -> list[str]:
-    """Nomes canônicos a executar (``--only``); default = ``experiments.run`` da config."""
-    if names is None:
-        return list(cfg.experiments.run)
-    out: list[str] = []
-    for raw in names:
-        name = raw.strip().lower()
-        if name in DERIVED:
-            raise ValueError(f"{name} não é executável isoladamente: {DERIVED[name]}")
-        name = ALIASES.get(name, name)
-        if name not in EXPERIMENTS:
-            raise ValueError(f"experimento desconhecido: {raw!r}; válidos: exp1..exp5")
-        out.append(name)
-    return out
-
-
-def build_matrix(
-    cfg: ExperimentConfig,
-    only: Iterable[str] | None = None,
-    algorithms: Sequence[str] | None = None,
-) -> list[PlannedCell]:
-    """Matriz deduplicada e ordenada (cenário × repetição × ruído × SR × LLM × prompt)."""
-    exps = resolve_experiments(only, cfg)
-    if algorithms is not None:
-        unknown = sorted(set(algorithms) - set(cfg.experiments.algorithms))
-        if unknown:
-            raise ValueError(f"--sr fora de experiments.algorithms: {unknown}")
-    by_key: dict[str, tuple[Cell, list[str]]] = {}
-    for exp in exps:
-        for cell in EXPERIMENTS[exp](cfg):
-            if algorithms is not None and cell.sr not in algorithms:
-                continue
-            entry = by_key.setdefault(cell.key(), (cell, []))
-            if exp not in entry[1]:
-                entry[1].append(exp)
-    planned = [PlannedCell(c, tuple(e)) for c, e in by_key.values()]
-    return sorted(planned, key=lambda p: p.cell.sort_key())
 
 
 def aborts_on_failure(cfg: ExperimentConfig) -> bool:
@@ -254,6 +193,16 @@ def run_experiments(
     """
     path, run_id = _open_run_dir(cfg, run_dir, resume)
     planned = build_matrix(cfg, only, algorithms)
+    _update_run_info(
+        path,
+        status=RUN_STATUS_RUNNING,
+        last_invocation={
+            "at": datetime.now(timezone.utc).isoformat(),
+            "only": None if only is None else list(only),
+            "algorithms": None if algorithms is None else list(algorithms),
+            "resume": resume,
+        },
+    )
     summary = RunSummary(path, run_id, planned=len(planned))
     done = completed_keys(path) if resume else set()
     factory = evaluator_factory or _default_evaluator_factory(cfg)
@@ -295,12 +244,21 @@ def run_experiments(
         if on_cell_done is not None:
             on_cell_done(item.cell, outcome)
         if outcome.row["status"] != STATUS_OK and abort:
+            _update_run_info(path, status=RUN_STATUS_ABORTED)
             _finish(path, cfg, run_id, evaluators, write_report)
             raise ExperimentAbortedError(
                 f"célula {key} falhou em full/paper_replication: {outcome.row['error']}"
             ) from outcome.exception
+    _update_run_info(path, status=RUN_STATUS_FINISHED)
     _finish(path, cfg, run_id, evaluators, write_report)
     return summary
+
+
+def _update_run_info(path: Path, **fields: Any) -> None:
+    """Atualiza campos de ``run.json`` (status, última invocação, avisos)."""
+    info = load_json(path / RUN_FILE)
+    info.update(fields)
+    save_json(info, path / RUN_FILE)
 
 
 def _finish(
