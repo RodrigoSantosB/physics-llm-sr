@@ -25,7 +25,7 @@ SMOKE = Path(__file__).resolve().parents[2] / "configs" / "smoke.yaml"
 K = 2
 
 
-class Interrupted(Exception):
+class InterruptedRunError(Exception):
     pass
 
 
@@ -42,10 +42,10 @@ def test_resume_skips_completed_cells_and_matches_continuous_run(
     def crash_after_k(cell: Cell, outcome: CellOutcome) -> None:
         first.append(cell.key())
         if len(first) == K:
-            raise Interrupted
+            raise InterruptedRunError
 
     interrupted = tmp_path / "interrupted"
-    with pytest.raises(Interrupted):
+    with pytest.raises(InterruptedRunError):
         run_experiments(cfg, run_dir=interrupted, on_cell_done=crash_after_k)
     assert len(list((interrupted / "cells").glob("*/result.json"))) == K
     assert not (interrupted / "results.parquet").exists()
@@ -82,8 +82,8 @@ def test_resume_without_run_dir_finds_latest_run_with_same_config(
 ) -> None:
     monkeypatch.setenv(PROJECT_ROOT_ENV, str(tmp_path))
     cfg = load_config(SMOKE)
-    with pytest.raises(Interrupted):
-        run_experiments(cfg, on_cell_done=lambda c, o: (_ for _ in ()).throw(Interrupted()))
+    with pytest.raises(InterruptedRunError):
+        run_experiments(cfg, on_cell_done=lambda c, o: (_ for _ in ()).throw(InterruptedRunError()))
     found = find_resumable_run(cfg)
     assert found is not None
     summary = run_experiments(cfg, resume=True)
