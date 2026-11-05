@@ -1,4 +1,5 @@
-.PHONY: install check test test-julia test-llm-real notebook-smoke lint format
+.PHONY: install check test test-julia test-llm-real notebook-smoke lint format \
+	smoke pilot pilot-colab report
 
 NOT_OPT_IN = not slow and not julia and not llm_real
 NOTEBOOK = notebooks/01_full_paper_reproduction.ipynb
@@ -30,3 +31,28 @@ test-llm-real:
 notebook-smoke:
 	PHYSICS_LLM_SR_MODE=smoke uv run jupyter nbconvert --to notebook --execute $(NOTEBOOK) \
 		--output-dir results/notebook_smoke
+
+# ---------------------------------------------------------------- execução de experimentos
+# RESUME=1 retoma a execução mais recente com a mesma config (células concluídas são puladas).
+CLI = uv run physics-llm-sr
+RESUME_FLAG = $(if $(RESUME),--resume,)
+
+# Smoke: avaliador simulado, segundos.
+smoke:
+	$(CLI) run --config configs/smoke.yaml $(RESUME_FLAG)
+
+# Piloto local (Ollama mistral:7b-instruct), DOIS braços: paper_replication (literal) e
+# extended_analysis (normalized). Diretórios separados; nunca misturar nas tabelas.
+pilot:
+	$(CLI) run --config configs/pilot.yaml $(RESUME_FLAG)
+	$(CLI) run --config configs/pilot_extended.yaml $(RESUME_FLAG)
+
+# Piloto Colab A100 (transformers fp16), dois braços.
+pilot-colab:
+	$(CLI) run --config configs/colab_pilot.yaml $(RESUME_FLAG)
+	$(CLI) run --config configs/colab_pilot_extended.yaml $(RESUME_FLAG)
+
+# Relatório/figuras a partir dos arquivos persistidos: make report RUN_DIR=results/smoke/<id>
+report:
+	@test -n "$(RUN_DIR)" || (echo "uso: make report RUN_DIR=results/<cfg>/<run_id>" && exit 2)
+	$(CLI) report $(RUN_DIR)
