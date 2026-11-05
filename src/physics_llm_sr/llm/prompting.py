@@ -29,6 +29,7 @@ from typing import Any
 
 import yaml
 
+from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
 from physics_llm_sr.llm.interfaces import LLMError
 from physics_llm_sr.symbolic.expression import Expr, to_infix
@@ -196,6 +197,11 @@ class PromptLibrary:
             variants=variants,
             source_dir=root,
         )
+
+    @classmethod
+    def from_config(cls, llm_config: LLMConfig) -> PromptLibrary:
+        """Carrega de ``llm.prompts_dir`` (``None`` = ``prompts/`` do repositório)."""
+        return cls.load(llm_config.prompts_dir)
 
     @property
     def variants(self) -> tuple[str, ...]:

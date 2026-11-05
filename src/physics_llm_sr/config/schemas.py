@@ -278,11 +278,14 @@ class LLMConfig(_Strict):
     max_retries: Annotated[int, Field(ge=0)] = 3
     failure_policy: Literal["retry", "abort"] = "retry"
     prompt_variants: list[PromptVariant] = ["A", "B", "C", "D", "E", "F", "G", "H"]
-    cache_dir: str = ".cache/llm"
+    cache_enabled: bool = True
+    cache_dir: str = ".cache/llm"  # diretório do cache JSONL de avaliações
     prompts_dir: str | None = None  # None = prompts/ do repositório
-    batch_size: PositiveInt = 1
-    request_timeout_s: PositiveFloat = 120.0
-    seed: Annotated[int, Field(ge=0)] = 42
+    #: Endereço do servidor Ollama (backend ``ollama``).
+    ollama_endpoint: str = "http://localhost:11434"
+    batch_size: PositiveInt = 1  # lote do backend transformers
+    request_timeout_s: PositiveFloat = 120.0  # timeout HTTP do backend ollama
+    seed: Annotated[int, Field(ge=0)] = 42  # semente de inferência
     #: ``all`` = todos os candidatos únicos, com cache (replication); ``top_k`` só em extended.
     evaluation_scope: Literal["all", "top_k"] = "all"
     top_k: PositiveInt | None = None
@@ -334,6 +337,12 @@ class ExperimentConfig(_Strict):
             raise ValueError(
                 "llm.top_k/evaluation_scope='top_k' é desvio; permitido apenas em extended_analysis"
             )
+        if self.track is Track.PAPER_REPLICATION and self.llm.backend == "transformers":
+            unpinned = [m.name for m in self.llm.models if not (m.revision or "").strip()]
+            if unpinned:
+                raise ValueError(
+                    f"llm.models[].revision (SHA) é obrigatório em paper_replication: {unpinned}"
+                )
         declared = {m.name for m in self.llm.models}
         unknown = [m for m in self.experiments.models if m not in declared]
         if unknown:

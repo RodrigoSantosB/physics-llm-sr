@@ -74,13 +74,17 @@ llm:
   max_retries: 3
   failure_policy: retry
   prompt_variants: [E]               # piloto: prompt E
+  cache_enabled: true
   cache_dir: .cache/llm
+  ollama_endpoint: http://localhost:11434
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
   request_timeout_s: 120.0
   seed: 42
   models:                             # GAP-07
-    - {name: mistral, checkpoint: "mistral:7b-instruct", revision: null, quantization: q4, infra: local-ollama-gtx1060}
+    - {name: mistral, checkpoint: "mistral:7b-instruct", revision: null, quantization: Q4, infra: local-ollama-gtx1060}
+    - {name: llama2, checkpoint: "llama2:7b-chat", revision: null, quantization: Q4, infra: local-ollama-gtx1060}
+    - {name: falcon, checkpoint: "falcon:7b-instruct", revision: null, quantization: Q4, infra: local-ollama-gtx1060}
 experiments:
   run: [llm_integration]
   repetitions: 3                      # piloto

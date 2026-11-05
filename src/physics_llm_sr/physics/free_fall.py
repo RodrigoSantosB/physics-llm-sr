@@ -114,9 +114,9 @@ class FreeFallScenario:
                 "velocity": "speed of the freely falling object",
             },
             experiment_description=(
-                "Object released from rest in free fall without air resistance, under gravitational "
-                f"acceleration g = {self.config.gravity} m/s^2. The speed is predicted after "
-                "falling the distance 'height'."
+                "Object released from rest in free fall without air resistance, under "
+                f"gravitational acceleration g = {self.config.gravity} m/s^2. The speed is "
+                "predicted after falling the distance 'height'."
             ),
             ground_truth=f"sqrt(2*{self.config.gravity!r}*height)",
             units=dict(UNITS),

@@ -74,13 +74,15 @@ llm:
   max_retries: 3
   failure_policy: retry
   prompt_variants: [E]               # piloto: prompt E
+  cache_enabled: true
   cache_dir: .cache/llm
+  ollama_endpoint: http://localhost:11434   # usado só com backend ollama
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
   request_timeout_s: 120.0
   seed: 42
   models:                             # GAP-07
-    - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: null, quantization: fp16, infra: colab-a100}
+    - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: ec5deb64f2c6e6fa90c1abf74a91d5c93a9669ca, quantization: fp16, infra: colab-a100}
 experiments:
   run: [llm_integration]
   repetitions: 3                      # piloto

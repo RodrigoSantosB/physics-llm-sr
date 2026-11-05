@@ -351,9 +351,11 @@ def _cfg(backend: str, revision: str | None = SHA, checkpoint: str = CKPT) -> LL
 
 
 def test_build_backend_variants(hf: HFStub) -> None:
-    fake = build_backend(_cfg("fake"), "mistral")
+    fake = build_backend(_cfg("fake"), "mistral", track=Track.PAPER_REPLICATION)
     assert isinstance(fake, FakeBackend)
-    ollama = build_backend(_cfg("ollama", checkpoint="mistral:7b-instruct"), "mistral")
+    ollama = build_backend(
+        _cfg("ollama", checkpoint="mistral:7b-instruct"), "mistral", track=Track.PAPER_REPLICATION
+    )
     assert isinstance(ollama, OllamaBackend) and ollama.num_predict == 33
     assert ollama.model_metadata()["checkpoint"] == "mistral:7b-instruct"
     hf_backend = build_backend(_cfg("transformers"), "mistral", track=Track.PAPER_REPLICATION)
@@ -363,9 +365,9 @@ def test_build_backend_variants(hf: HFStub) -> None:
 
 def test_build_backend_rejects_unknown_model_and_missing_revision() -> None:
     with pytest.raises(BackendConfigurationError, match="llama2"):
-        build_backend(_cfg("fake"), "llama2")
+        build_backend(_cfg("fake"), "llama2", track=Track.PAPER_REPLICATION)
     with pytest.raises(BackendConfigurationError, match="revis"):
-        build_backend(_cfg("transformers", revision=None), "mistral")
+        build_backend(_cfg("transformers", revision=None), "mistral", track=Track.PAPER_REPLICATION)
 
 
 def test_fake_backend_default_is_deterministic_and_valid() -> None:

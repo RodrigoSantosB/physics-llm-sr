@@ -70,7 +70,7 @@ def test_pilot_definitions() -> None:
         assert sorted(cfg.experiments.algorithms) == ["deap", "gplearn", "pysr"]
         assert cfg.experiments.repetitions == 3
         assert cfg.llm.prompt_variants == ["E"]
-        assert [m.name for m in cfg.llm.models] == ["mistral"]
+        assert cfg.experiments.models == ["mistral"]
     assert (local.llm.backend, local.sr.population, local.sr.generations) == ("ollama", 50, 10)
     assert (colab.llm.backend, colab.sr.population, colab.sr.generations) == (
         "transformers",

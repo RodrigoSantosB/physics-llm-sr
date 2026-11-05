@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
 from physics_llm_sr.llm.interfaces import EquationEvaluation, InvalidScoreValueError
 from physics_llm_sr.symbolic.canonicalization import canonical_key
@@ -30,6 +31,8 @@ from physics_llm_sr.symbolic.expression import Expr
 
 logger = logging.getLogger(__name__)
 
+#: Nome do arquivo JSONL dentro de ``llm.cache_dir``.
+CACHE_FILENAME = "evaluations.jsonl"
 STATUS_OK = "ok"
 STATUS_ERROR = "error"
 #: Versão do formato da chave/registro (entra na chave).
@@ -91,6 +94,13 @@ class EvaluationCache:
         self.corrupted_lines = 0
         if self.path is not None and self.path.exists():
             self._load(self.path)
+
+    @classmethod
+    def from_config(cls, llm_config: LLMConfig) -> EvaluationCache | None:
+        """Cache persistido em ``llm.cache_dir``; ``None`` se ``llm.cache_enabled`` é falso."""
+        if not llm_config.cache_enabled:
+            return None
+        return cls(Path(llm_config.cache_dir) / CACHE_FILENAME)
 
     def _load(self, path: Path) -> None:
         with path.open(encoding="utf-8") as fh:

@@ -24,6 +24,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from physics_llm_sr.config.schemas import LLMConfig
 from physics_llm_sr.core_types import PhysicalContext
 from physics_llm_sr.llm.cache import EvaluationCache, cache_key, context_hash
 from physics_llm_sr.llm.interfaces import (
@@ -115,6 +116,27 @@ class LLMEquationEvaluator:
         self.failure_policy = failure_policy
         self._clock = clock
         self.metrics = EvaluatorMetrics()
+
+    @classmethod
+    def from_config(
+        cls,
+        llm_config: LLMConfig,
+        backend: TextGenerationBackend,
+        prompt_library: PromptLibrary | None = None,
+        cache: EvaluationCache | None = None,
+    ) -> LLMEquationEvaluator:
+        """Avaliador com ``max_retries``, ``failure_policy``, prompts e cache da config.
+
+        ``prompt_library``/``cache`` explícitos têm precedência; senão vêm de
+        ``llm.prompts_dir`` e ``llm.cache_dir``/``llm.cache_enabled``.
+        """
+        return cls(
+            backend,
+            prompt_library if prompt_library is not None else PromptLibrary.from_config(llm_config),
+            cache=cache if cache is not None else EvaluationCache.from_config(llm_config),
+            max_retries=llm_config.max_retries,
+            failure_policy=llm_config.failure_policy,
+        )
 
     @property
     def max_attempts(self) -> int:

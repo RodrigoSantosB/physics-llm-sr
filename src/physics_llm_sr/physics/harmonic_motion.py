@@ -133,8 +133,9 @@ class HarmonicMotionScenario:
                 "displacement": "displacement x of the mass from equilibrium",
             },
             experiment_description=(
-                f"Mass attached to an ideal spring with constant k = {self.config.spring_constant} N/m, "
-                "released from rest at amplitude A, without friction. The displacement x(t) is predicted."
+                "Mass attached to an ideal spring with constant "
+                f"k = {self.config.spring_constant} N/m, released from rest at amplitude A, "
+                "without friction. The displacement x(t) is predicted."
             ),
             ground_truth=f"length*cos({argument})",
             units=dict(UNITS),

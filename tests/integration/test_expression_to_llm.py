@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from physics_llm_sr.config.schemas import LLMConfig, LLMModelConfig
+from physics_llm_sr.core_types import Track
 from physics_llm_sr.llm.cache import EvaluationCache
 from physics_llm_sr.llm.inference import build_backend
 from physics_llm_sr.llm.interfaces import PhysicsEquationEvaluator
@@ -23,7 +24,7 @@ def test_expression_to_llm_end_to_end(tmp_path: Path) -> None:
         models=[LLMModelConfig(name="mistral", checkpoint="fake-mistral", revision="r")],
         max_retries=1,
     )
-    backend = build_backend(config, "mistral")
+    backend = build_backend(config, "mistral", track=Track.EXTENDED_ANALYSIS)
     cache_path = tmp_path / "llm.jsonl"
     evaluator: PhysicsEquationEvaluator = LLMEquationEvaluator(
         backend,
