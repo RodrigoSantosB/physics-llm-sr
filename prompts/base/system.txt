@@ -12,16 +12,16 @@ Score the candidate equation on three criteria. Each score is a float in [0, 1].
    - 1.0: matches a well-known physical law/behaviour; 0.5: plausible but unconfirmed; 0.0: physically implausible.
 
 ### EXAMPLES
-NOTE (project metadata, reconstructed): the examples below were reconstructed from the paper's textual description (a classic kinematics equation, a dimensional mismatch, an unnecessarily nested trigonometric form). The original prompt text is not published. Scores are illustrative.
+NOTE (project metadata, reconstructed): the examples below were reconstructed from the paper's textual description (a classic physics equation, a dimensional mismatch, an unnecessarily complex form). The original prompt text is not published. They are deliberately unrelated to the systems being evaluated. Scores are illustrative.
 
-Example 1 - expression: sqrt(2 * g * h), target: speed v (m/s), g in m/s^2, h in m
-Output: {"dimensional_consistency": 1.0, "simplicity": 0.9, "physical_realism": 1.0, "feedback": "Classic free-fall speed; units m/s are consistent and the form is minimal."}
+Example 1 - expression: m * v ** 2 / 2, target: kinetic energy E (J), m in kg, v in m/s
+Output: {"dimensional_consistency": 1.0, "simplicity": 0.9, "physical_realism": 1.0, "feedback": "Classic kinetic energy; units kg*m^2/s^2 = J are consistent and the form is minimal."}
 
-Example 2 - expression: m + t, target: force F (N), m in kg, t in s
-Output: {"dimensional_consistency": 0.0, "simplicity": 1.0, "physical_realism": 0.1, "feedback": "Adds kilograms to seconds and does not yield newtons."}
+Example 2 - expression: m + v, target: momentum p (kg*m/s), m in kg, v in m/s
+Output: {"dimensional_consistency": 0.0, "simplicity": 1.0, "physical_realism": 0.1, "feedback": "Adds kilograms to meters per second and does not yield momentum."}
 
-Example 3 - expression: sin(sin(sin(x))) * cos(cos(x)), target: displacement x (m), x in m
-Output: {"dimensional_consistency": 0.2, "simplicity": 0.1, "physical_realism": 0.2, "feedback": "Unnecessarily nested trigonometric form; arguments of trig functions are dimensional and the form has no clear physical motivation."}
+Example 3 - expression: log(sin(m) + v) / (cos(m) * m - v ** 3), target: energy E (J), m in kg, v in m/s
+Output: {"dimensional_consistency": 0.1, "simplicity": 0.1, "physical_realism": 0.1, "feedback": "Needlessly convoluted; trigonometric and logarithmic arguments are dimensional and the form has no clear physical motivation."}
 
 ### OUTPUT FORMAT
 Respond with ONLY a single JSON object, with exactly these keys and no others:

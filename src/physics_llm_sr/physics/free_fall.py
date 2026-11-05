@@ -106,17 +106,17 @@ class FreeFallScenario:
         return PhysicalContext(
             scenario=NAME,
             variable_descriptions={
-                "mass": "massa do objeto (não influencia a velocidade sem arrasto)",
-                "length": "comprimento característico do objeto (irrelevante)",
-                "height": "distância percorrida na queda desde o repouso",
-                "damping": "coeficiente de amortecimento (irrelevante; sem arrasto)",
-                "t": "tempo decorrido desde o início da queda",
-                "velocity": "velocidade do objeto em queda livre",
+                "mass": "mass of the object (does not affect the speed without drag)",
+                "length": "characteristic length of the object (irrelevant)",
+                "height": "distance fallen from rest",
+                "damping": "damping coefficient (irrelevant; no drag)",
+                "t": "time elapsed since the start of the fall",
+                "velocity": "speed of the freely falling object",
             },
             experiment_description=(
-                "Objeto solto do repouso em queda livre sem resistência do ar, sob aceleração "
-                f"da gravidade g = {self.config.gravity} m/s^2. Prevê-se a velocidade após "
-                "percorrer a distância 'height'."
+                "Object released from rest in free fall without air resistance, under gravitational "
+                f"acceleration g = {self.config.gravity} m/s^2. The speed is predicted after "
+                "falling the distance 'height'."
             ),
             ground_truth=f"sqrt(2*{self.config.gravity!r}*height)",
             units=dict(UNITS),
