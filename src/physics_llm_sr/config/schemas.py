@@ -258,12 +258,10 @@ class LLMConfig(_Strict):
 class ExperimentsConfig(_Strict):
     """Quais experimentos rodar e a matriz de cenários, algoritmos e modelos."""
 
-    run: list[ExperimentName] = Field(default_factory=lambda: ["baseline"])
+    run: list[ExperimentName] = ["baseline"]
     repetitions: PositiveInt = 25
-    scenarios: list[ScenarioName] = Field(
-        default_factory=lambda: ["free_fall", "harmonic_motion", "damped_wave"]
-    )
-    algorithms: list[AlgorithmName] = Field(default_factory=lambda: ["deap", "gplearn", "pysr"])
+    scenarios: list[ScenarioName] = ["free_fall", "harmonic_motion", "damped_wave"]
+    algorithms: list[AlgorithmName] = ["deap", "gplearn", "pysr"]
     models: list[str] = Field(default_factory=list)  # vazio = todos os de llm.models
 
 
