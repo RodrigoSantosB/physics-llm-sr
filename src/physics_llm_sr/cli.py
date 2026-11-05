@@ -1,7 +1,9 @@
 """Linha de comando ``physics-llm-sr``.
 
 - ``physics-llm-sr run --config configs/X.yaml [--resume [RUN_DIR]] [--only exp1,exp2]
-  [--sr deap,gplearn]``: executa a matriz da config (checkpoint por célula).
+  [--sr deap,gplearn] [--allow-code-change]``: executa a matriz da config (checkpoint por
+  célula). ``RUN_DIR`` relativo é resolvido contra ``PHYSICS_LLM_SR_PROJECT_ROOT`` (como
+  ``output_dir``); retomar com código git diferente exige ``--allow-code-change``.
 - ``physics-llm-sr report <run_dir>``: reconstrói tabelas, comparação com o artigo e
   figuras a partir dos arquivos persistidos (sem treinar).
 """
@@ -16,6 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from physics_llm_sr.config.loader import ConfigError, load_config
+from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.experiments.runner import ExperimentAbortedError, report, run_experiments
 from physics_llm_sr.logging_setup import setup_logging
 
@@ -48,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="RUN_DIR",
         help="retoma RUN_DIR (ou a execução mais recente com a mesma config)",
     )
+    run.add_argument(
+        "--allow-code-change",
+        action="store_true",
+        help="permite retomar com código (git) diferente; fica registrado e avisado no relatório",
+    )
     run.add_argument("--only", help="experimentos: exp1..exp5 (ou nomes), separados por vírgula")
     run.add_argument("--sr", help="algoritmos SR, separados por vírgula (ex.: deap,gplearn)")
     run.add_argument("--verbose", action="store_true", help="log DEBUG")
@@ -72,13 +80,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     try:
         cfg = load_config(args.config)
-        run_dir = None if args.resume in (None, RESUME_LATEST) else Path(args.resume)
+        run_dir = (
+            None if args.resume in (None, RESUME_LATEST) else resolve_project_path(args.resume)
+        )
         summary = run_experiments(
             cfg,
             run_dir=run_dir,
             resume=args.resume is not None,
             only=_csv(args.only),
             algorithms=_csv(args.sr),
+            allow_code_change=args.allow_code_change,
         )
     except (ConfigError, ValueError) as exc:
         print(f"erro: {exc}", file=sys.stderr)

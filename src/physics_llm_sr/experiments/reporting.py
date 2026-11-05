@@ -24,6 +24,7 @@ from physics_llm_sr.evaluation.statistics import (
 )
 from physics_llm_sr.experiments import noise_robustness, prompt_sensitivity, structural
 from physics_llm_sr.experiments.cells import NONE, ZERO_MEAN
+from physics_llm_sr.experiments.matrix import planned_keys
 from physics_llm_sr.experiments.storage import (
     FIGURES_DIR,
     HISTORY_FILE,
@@ -48,6 +49,8 @@ COMPARISON_FILE = "comparison.csv"
 PROMPT_FILE = "prompt_sensitivity.csv"
 NOISE_FILE = "noise_robustness.csv"
 STRUCTURAL_FILE = "structural.csv"
+#: ``run.json["status"]`` gravado pelo runner quando a execução é abortada.
+RUN_STATUS_ABORTED = "aborted"
 REDUCED_LABEL = (
     "EXECUÇÃO REDUZIDA ({mode}/{track}): não é resultado completo nem reprodução do artigo"
 )
@@ -71,6 +74,46 @@ def load_run_config(run_dir: Path) -> ExperimentConfig:
 def is_reduced(cfg: ExperimentConfig) -> bool:
     """Smoke, pilot ou extended nunca são resultado completo de reprodução."""
     return cfg.mode is not Mode.FULL or cfg.track is not Track.PAPER_REPLICATION
+
+
+def incomplete_reasons(
+    cfg: ExperimentConfig, results: pd.DataFrame, run_info: dict[str, Any]
+) -> list[str]:
+    """Motivos pelos quais a execução NÃO é resultado completo (lista vazia = completo).
+
+    Completo exige: ``mode=full``, ``track=paper_replication``, zero erros, execução não
+    abortada e células ``ok`` == matriz planejada completa da config (sem ``--only``/``--sr``).
+    """
+    reasons: list[str] = []
+    if is_reduced(cfg):
+        reasons.append(f"execução reduzida ({cfg.mode.value}/{cfg.track.value})")
+    n_error = 0 if results.empty else int((results["status"] != STATUS_OK).sum())
+    if n_error:
+        reasons.append(f"{n_error} célula(s) com erro")
+    if run_info.get("status") == RUN_STATUS_ABORTED:
+        reasons.append("execução abortada")
+    done = set() if results.empty else set(results.loc[results["status"] == STATUS_OK, "cell_key"])
+    expected = planned_keys(cfg)
+    missing, extra = expected - done, done - expected
+    if missing or extra:
+        reasons.append(
+            f"matriz executada != matriz planejada completa ({len(missing)} faltando, "
+            f"{len(extra)} fora da matriz; --only/--sr ou execução parcial)"
+        )
+    return reasons
+
+
+def run_warnings(run_info: dict[str, Any]) -> list[str]:
+    """Avisos registrados em ``run.json`` (ex.: retomada com código diferente)."""
+    out = []
+    for change in run_info.get("code_changes") or []:
+        before, after = change.get("from") or {}, change.get("to") or {}
+        out.append(
+            f"retomada com código diferente (--allow-code-change) em {change.get('at')}: "
+            f"git_sha {str(before.get('git_sha'))[:12]} dirty={before.get('git_dirty')} -> "
+            f"{str(after.get('git_sha'))[:12]} dirty={after.get('git_dirty')}"
+        )
+    return out
 
 
 def consolidate(run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -178,18 +221,26 @@ def replot(run_dir: Path) -> list[Path]:
 def report(run_dir: Path) -> dict[str, Any]:
     """Consolida, analisa, compara com o artigo e regenera as figuras; grava ``report.json``."""
     run_dir = Path(run_dir)
-    cfg = load_run_config(run_dir)
+    run_info = load_json(run_dir / RUN_FILE)
+    cfg = parse_config(run_info["config"])
     results, _ = consolidate(run_dir)
     reduced = is_reduced(cfg)
+    reasons = incomplete_reasons(cfg, results, run_info)
+    if reduced:
+        label = REDUCED_LABEL.format(mode=cfg.mode.value, track=cfg.track.value)
+    elif reasons:
+        label = "execução full/paper_replication INCOMPLETA: " + "; ".join(reasons)
+    else:
+        label = "execução completa (full/paper_replication)"
     info: dict[str, Any] = {
         "run_dir": str(run_dir),
         "mode": cfg.mode.value,
         "track": cfg.track.value,
         "reduced_run": reduced,
-        "complete_result": not reduced,
-        "label": REDUCED_LABEL.format(mode=cfg.mode.value, track=cfg.track.value)
-        if reduced
-        else "execução completa (full/paper_replication)",
+        "complete_result": not reasons,
+        "incomplete_reasons": reasons,
+        "label": label,
+        "warnings": run_warnings(run_info),
         "n_cells": len(results),
         "n_ok": 0,
         "n_error": 0,

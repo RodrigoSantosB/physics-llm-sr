@@ -276,3 +276,13 @@ def test_cache_key_accepts_significant_digits_and_key_mode() -> None:
     assert cache_key(s1, ident, "E", "h", ctx, key_mode="structure") == cache_key(
         s2, ident, "E", "h", ctx, key_mode="structure"
     )
+
+
+def test_identity_includes_batch_size_and_prompt_format() -> None:
+    meta = {"backend": "transformers", "checkpoint": "m", "revision": "r", "quantization": "fp16"}
+    base = model_identity({**meta, "batch_size": 8, "prompt_format": "chat_template"})
+    assert base["batch_size"] == 8 and base["prompt_format"] == "chat_template"
+    other_batch = model_identity({**meta, "batch_size": 1, "prompt_format": "chat_template"})
+    other_format = model_identity({**meta, "batch_size": 8, "prompt_format": "plain"})
+    keys = {cache_key(GT, ident, "E", "h", "c") for ident in (base, other_batch, other_format)}
+    assert len(keys) == 3

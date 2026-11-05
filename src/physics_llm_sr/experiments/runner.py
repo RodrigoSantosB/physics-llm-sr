@@ -24,18 +24,17 @@ from typing import Any
 
 from physics_llm_sr.config.paths import resolve_project_path
 from physics_llm_sr.config.schemas import ExperimentConfig
-from physics_llm_sr.core_types import Mode, Track
-from physics_llm_sr.experiments import (
-    baseline,
-    biased_noise,
-    llm_integration,
-    noise_robustness,
-    prompt_sensitivity,
-)
 from physics_llm_sr.experiments.cells import Cell
 from physics_llm_sr.experiments.data_provider import DataProvider
-from physics_llm_sr.experiments.execution import CellContext, CellOutcome, run_cell
+from physics_llm_sr.experiments.execution import CellContext, CellOutcome, is_strict, run_cell
+from physics_llm_sr.experiments.matrix import (
+    EXPERIMENTS,
+    PlannedCell,
+    build_matrix,
+    resolve_experiments,
+)
 from physics_llm_sr.experiments.reporting import (
+    RUN_STATUS_ABORTED,
     methodological_view,
     replot,
     report,
@@ -59,12 +58,14 @@ from physics_llm_sr.reproducibility.artifacts import (
 from physics_llm_sr.reproducibility.manifests import (
     RunManifest,
     build_manifest,
+    code_identity,
     hash_config,
     new_run_id,
 )
 
 __all__ = [
     "EXPERIMENTS",
+    "CodeChangedError",
     "ExperimentAbortedError",
     "PlannedCell",
     "RunSummary",
@@ -78,37 +79,20 @@ __all__ = [
 ]
 
 LOGGER = logging.getLogger(__name__)
-#: Experimento -> gerador de células (ordem = Exp1..Exp5). Exp6 está nas métricas de cada
-#: célula; Exp7 é a comparação feita em :func:`report`.
-EXPERIMENTS: dict[str, Callable[[ExperimentConfig], list[Cell]]] = {
-    baseline.NAME: baseline.cells,
-    llm_integration.NAME: llm_integration.cells,
-    prompt_sensitivity.NAME: prompt_sensitivity.cells,
-    noise_robustness.NAME: noise_robustness.cells,
-    biased_noise.NAME: biased_noise.cells,
-}
-ALIASES = {
-    "exp1": baseline.NAME,
-    "exp2": llm_integration.NAME,
-    "exp3": prompt_sensitivity.NAME,
-    "exp4": noise_robustness.NAME,
-    "exp5": biased_noise.NAME,
-}
-DERIVED = {"exp6": "comparação estrutural (métricas de cada célula)", "exp7": "use `report`"}
 EvaluatorFactory = Callable[[str], PhysicsEquationEvaluator]
 CellCallback = Callable[[Cell, CellOutcome], None]
 
 
+RUN_STATUS_RUNNING = "running"
+RUN_STATUS_FINISHED = "finished"
+
+
+class CodeChangedError(ValueError):
+    """Retomada com código (git) diferente do registrado em ``run.json``."""
+
+
 class ExperimentAbortedError(RuntimeError):
     """Falha de célula em full/paper_replication: a execução é interrompida."""
-
-
-@dataclass(frozen=True)
-class PlannedCell:
-    """Célula da matriz e os experimentos que a pedem (células iguais são deduplicadas)."""
-
-    cell: Cell
-    experiments: tuple[str, ...]
 
 
 @dataclass
@@ -124,48 +108,9 @@ class RunSummary:
     errors: list[dict[str, Any]] = field(default_factory=list)
 
 
-def resolve_experiments(names: Iterable[str] | None, cfg: ExperimentConfig) -> list[str]:
-    """Nomes canônicos a executar (``--only``); default = ``experiments.run`` da config."""
-    if names is None:
-        return list(cfg.experiments.run)
-    out: list[str] = []
-    for raw in names:
-        name = raw.strip().lower()
-        if name in DERIVED:
-            raise ValueError(f"{name} não é executável isoladamente: {DERIVED[name]}")
-        name = ALIASES.get(name, name)
-        if name not in EXPERIMENTS:
-            raise ValueError(f"experimento desconhecido: {raw!r}; válidos: exp1..exp5")
-        out.append(name)
-    return out
-
-
-def build_matrix(
-    cfg: ExperimentConfig,
-    only: Iterable[str] | None = None,
-    algorithms: Sequence[str] | None = None,
-) -> list[PlannedCell]:
-    """Matriz deduplicada e ordenada (cenário × repetição × ruído × SR × LLM × prompt)."""
-    exps = resolve_experiments(only, cfg)
-    if algorithms is not None:
-        unknown = sorted(set(algorithms) - set(cfg.experiments.algorithms))
-        if unknown:
-            raise ValueError(f"--sr fora de experiments.algorithms: {unknown}")
-    by_key: dict[str, tuple[Cell, list[str]]] = {}
-    for exp in exps:
-        for cell in EXPERIMENTS[exp](cfg):
-            if algorithms is not None and cell.sr not in algorithms:
-                continue
-            entry = by_key.setdefault(cell.key(), (cell, []))
-            if exp not in entry[1]:
-                entry[1].append(exp)
-    planned = [PlannedCell(c, tuple(e)) for c, e in by_key.values()]
-    return sorted(planned, key=lambda p: p.cell.sort_key())
-
-
 def aborts_on_failure(cfg: ExperimentConfig) -> bool:
     """Falha de célula aborta só em full + paper_replication."""
-    return cfg.mode is Mode.FULL and cfg.track is Track.PAPER_REPLICATION
+    return is_strict(cfg)
 
 
 def find_resumable_run(cfg: ExperimentConfig) -> Path | None:
@@ -190,7 +135,40 @@ def _default_evaluator_factory(cfg: ExperimentConfig) -> EvaluatorFactory:
     return factory
 
 
-def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> tuple[Path, str]:
+CODE_KEYS = ("git_sha", "git_dirty", "git_diff_hash")
+
+
+def _current_code(info: dict[str, Any]) -> dict[str, Any]:
+    """Identidade de código vigente da execução (última mudança permitida ou a da criação)."""
+    changes = info.get("code_changes") or []
+    if changes:
+        latest: dict[str, Any] = changes[-1]["to"]
+        return latest
+    return {k: info.get(k) for k in CODE_KEYS}
+
+
+def _check_code(path: Path, info: dict[str, Any], allow_code_change: bool) -> None:
+    """Recusa retomar com código diferente, salvo ``allow_code_change`` (registrado)."""
+    stored = _current_code(info)
+    now = code_identity()
+    if {k: now.get(k) for k in CODE_KEYS} == stored:
+        return
+    if not allow_code_change:
+        raise CodeChangedError(
+            f"código diverge da execução em {path} (git_sha {str(stored.get('git_sha'))[:12]} "
+            f"dirty={stored.get('git_dirty')} -> {str(now.get('git_sha'))[:12]} "
+            f"dirty={now.get('git_dirty')}): a retomada exige o mesmo código; use "
+            "--allow-code-change (allow_code_change=True) para retomar mesmo assim (fica "
+            "registrado em run.json e como aviso no relatório)"
+        )
+    LOGGER.warning("retomando %s com código diferente (--allow-code-change)", path)
+    change = {"at": datetime.now(timezone.utc).isoformat(), "from": stored, "to": now}
+    _update_run_info(path, code_changes=[*(info.get("code_changes") or []), change])
+
+
+def _open_run_dir(
+    cfg: ExperimentConfig, run_dir: Path | None, resume: bool, allow_code_change: bool = False
+) -> tuple[Path, str]:
     target = hash_config(cfg)
     if run_dir is None and resume:
         run_dir = find_resumable_run(cfg)
@@ -203,6 +181,7 @@ def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> 
                 f"config diverge da execução em {run_dir} (hash {info['config_hash'][:12]} "
                 f"!= {target[:12]}): a retomada exige a mesma config"
             )
+        _check_code(Path(run_dir), info, allow_code_change)
         return Path(run_dir), str(info["run_id"])
     run_id = new_run_id()
     if run_dir is None:
@@ -217,6 +196,7 @@ def _open_run_dir(cfg: ExperimentConfig, run_dir: Path | None, resume: bool) -> 
             "mode": cfg.mode.value,
             "track": cfg.track.value,
             "config_hash": target,
+            **code_identity(),
             "config": cfg.model_dump(mode="json"),
         },
         path / RUN_FILE,
@@ -234,6 +214,7 @@ def run_experiments(
     evaluator_factory: EvaluatorFactory | None = None,
     on_cell_done: CellCallback | None = None,
     write_report: bool = True,
+    allow_code_change: bool = False,
 ) -> RunSummary:
     """Executa a matriz da config célula a célula, com checkpoint e retomada.
 
@@ -248,12 +229,25 @@ def run_experiments(
             (``build_backend`` + ``LLMEquationEvaluator.from_config``).
         on_cell_done: chamado após cada célula executada (e gravada).
         write_report: consolida e gera relatório/figuras ao final.
+        allow_code_change: permite retomar com código (git) diferente do registrado em
+            ``run.json``; a mudança é registrada em ``code_changes`` e avisada no relatório.
 
     Raises:
         ExperimentAbortedError: falha de célula em full/paper_replication.
+        CodeChangedError: retomada com código diferente sem ``allow_code_change``.
     """
-    path, run_id = _open_run_dir(cfg, run_dir, resume)
+    path, run_id = _open_run_dir(cfg, run_dir, resume, allow_code_change)
     planned = build_matrix(cfg, only, algorithms)
+    _update_run_info(
+        path,
+        status=RUN_STATUS_RUNNING,
+        last_invocation={
+            "at": datetime.now(timezone.utc).isoformat(),
+            "only": None if only is None else list(only),
+            "algorithms": None if algorithms is None else list(algorithms),
+            "resume": resume,
+        },
+    )
     summary = RunSummary(path, run_id, planned=len(planned))
     done = completed_keys(path) if resume else set()
     factory = evaluator_factory or _default_evaluator_factory(cfg)
@@ -261,6 +255,9 @@ def run_experiments(
     cache: dict[str, Any] = {}
 
     def evaluator_for(model: str) -> PhysicsEquationEvaluator:
+        # Um modelo residente por vez: a matriz vem agrupada por LLM e o backend anterior
+        # é descarregado ao trocar (recarregado sob demanda se voltar a ser pedido).
+        _close_backends(evaluators, keep=model)
         if model not in evaluators:
             evaluators[model] = factory(model)
         return evaluators[model]
@@ -278,6 +275,24 @@ def run_experiments(
         return man
 
     ctx = CellContext(cfg, run_id, DataProvider(cfg), evaluator_for, prompts, base_manifest)
+    try:
+        _run_planned(ctx, planned, path, done, summary, evaluators, on_cell_done, write_report)
+    finally:
+        _close_backends(evaluators)
+    return summary
+
+
+def _run_planned(
+    ctx: CellContext,
+    planned: list[PlannedCell],
+    path: Path,
+    done: set[str],
+    summary: RunSummary,
+    evaluators: dict[str, PhysicsEquationEvaluator],
+    on_cell_done: CellCallback | None,
+    write_report: bool,
+) -> None:
+    cfg, run_id = ctx.cfg, ctx.run_id
     abort = aborts_on_failure(cfg)
     for item in planned:
         key = item.cell.key()
@@ -295,12 +310,32 @@ def run_experiments(
         if on_cell_done is not None:
             on_cell_done(item.cell, outcome)
         if outcome.row["status"] != STATUS_OK and abort:
+            _update_run_info(path, status=RUN_STATUS_ABORTED)
             _finish(path, cfg, run_id, evaluators, write_report)
             raise ExperimentAbortedError(
                 f"célula {key} falhou em full/paper_replication: {outcome.row['error']}"
             ) from outcome.exception
+    _update_run_info(path, status=RUN_STATUS_FINISHED)
     _finish(path, cfg, run_id, evaluators, write_report)
-    return summary
+
+
+def _close_backends(
+    evaluators: dict[str, PhysicsEquationEvaluator], keep: str | None = None
+) -> None:
+    """Descarrega os backends (``close()``, se houver), exceto o de ``keep``."""
+    for name, evaluator in evaluators.items():
+        if name == keep:
+            continue
+        close = getattr(getattr(evaluator, "backend", None), "close", None)
+        if callable(close):
+            close()
+
+
+def _update_run_info(path: Path, **fields: Any) -> None:
+    """Atualiza campos de ``run.json`` (status, última invocação, avisos)."""
+    info = load_json(path / RUN_FILE)
+    info.update(fields)
+    save_json(info, path / RUN_FILE)
 
 
 def _finish(

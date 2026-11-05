@@ -200,3 +200,26 @@ def test_dedup_structure_mode_masks_constants() -> None:
         objective((0.4, 0.2, 0.4), fake, key_mode="loose")
     with pytest.raises(ValueError):
         objective((0.4, 0.2, 0.4), fake, significant_digits=0)
+
+
+def test_build_objective_max_nodes_per_algorithm_only_in_normalized() -> None:
+    from physics_llm_sr.config.schemas import ExperimentConfig
+    from physics_llm_sr.core_types import Mode, Track
+    from physics_llm_sr.optimization.objective import MAX_NODES_RULES, build_objective
+
+    data = ExperimentConfig(mode=Mode.SMOKE, track=Track.EXTENDED_ANALYSIS).model_dump()
+    data["loss"]["normalization"] = "normalized"
+    data["sr"]["deap"]["max_depth"] = 5
+    data["sr"]["gplearn"]["init_depth"] = (1, 6)
+    data["sr"]["pysr"]["maxsize"] = 30
+    cfg = ExperimentConfig.model_validate(data)
+    fake = FakeEquationEvaluator.from_function(lambda e, c, v: ev(1, 1, 1))
+    expected = {"deap": 2**6 - 1, "gplearn": 2**7 - 1, "pysr": 30}
+    for algorithm, nodes in expected.items():
+        obj = build_objective(cfg, fake, CTX, algorithm, False, FEATURES)
+        assert obj.max_nodes == nodes, algorithm
+        assert obj.metadata["max_nodes"] == nodes
+        assert obj.metadata["max_nodes_rule"] == MAX_NODES_RULES[algorithm]
+    literal = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION)
+    for algorithm in expected:
+        assert build_objective(literal, fake, CTX, algorithm, False, FEATURES).max_nodes is None

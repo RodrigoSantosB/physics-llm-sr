@@ -374,3 +374,32 @@ def test_fake_backend_default_is_deterministic_and_valid() -> None:
     a = FakeBackend().generate(PROMPTS)
     b = FakeBackend().generate(PROMPTS)
     assert a == b and len(set(a)) == 3
+
+
+# ------------------------------------------------- revisão onda 6: close() e prompt_format
+
+
+def test_hf_close_releases_model_and_cuda_cache(hf: HFStub) -> None:
+    torch = sys.modules["torch"]
+    emptied: list[bool] = []
+    torch.cuda = types.SimpleNamespace(  # type: ignore[attr-defined]
+        is_available=lambda: True, empty_cache=lambda: emptied.append(True)
+    )
+    backend = _hf()
+    backend.generate(PROMPTS[:1])
+    assert backend.loaded
+    backend.close()
+    assert not backend.loaded and emptied == [True]
+    assert backend.model_metadata()["checkpoint"] == CKPT  # metadados sobrevivem ao close
+    backend.close()  # idempotente
+    assert backend.generate(PROMPTS[:1]) == [VALID]  # recarrega sob demanda
+    assert backend.loaded
+
+
+def test_hf_resolve_identity_fixes_prompt_format_without_loading_model(hf: HFStub) -> None:
+    backend = _hf()
+    backend.resolve_identity()
+    meta = backend.model_metadata()
+    assert meta["prompt_format"] == "chat_template"
+    assert hf.model_kwargs == {}  # só o tokenizer foi carregado
+    assert not backend.loaded

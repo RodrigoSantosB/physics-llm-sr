@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import importlib
 import json
@@ -332,20 +333,63 @@ class TransformersBackend:
         self._model: Any = None
         self._prompt_format: str | None = None
 
+    @property
+    def loaded(self) -> bool:
+        """Pesos do modelo residentes (entre o primeiro :meth:`generate` e :meth:`close`)."""
+        return self._model is not None
+
+    def _modules(self) -> tuple[Any, Any]:
+        if self._transformers is None:
+            try:
+                self._torch = importlib.import_module("torch")
+                self._transformers = importlib.import_module("transformers")
+            except ImportError as exc:
+                raise BackendError(
+                    f"backend transformers indisponível: {_HF_INSTALL_HINT}"
+                ) from exc
+        return self._torch, self._transformers
+
+    def _load_tokenizer(self) -> Any:
+        if self._tokenizer is None:
+            _, transformers = self._modules()
+            tokenizer = transformers.AutoTokenizer.from_pretrained(
+                self.checkpoint, revision=self.revision, trust_remote_code=False
+            )
+            tokenizer.padding_side = "left"
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            self._tokenizer = tokenizer
+        return self._tokenizer
+
+    def resolve_identity(self) -> None:
+        """Fixa ``prompt_format`` (entra na identidade do cache) carregando só o tokenizer.
+
+        O formato depende só do chat template do tokenizer (aceita ou não o papel
+        ``system``); é determinado com um prompt de sondagem, sem carregar os pesos.
+        """
+        if self._prompt_format is None:
+            self._load_tokenizer()
+            self._prompt_format = self._format("system", "user")[1]
+
+    def close(self) -> None:
+        """Descarrega os pesos (``del``, ``gc.collect``, ``torch.cuda.empty_cache``).
+
+        Idempotente; metadados e ``prompt_format`` são preservados e o modelo é recarregado
+        sob demanda no próximo :meth:`generate`.
+        """
+        if self._model is None:
+            return
+        self._model = None
+        gc.collect()
+        cuda = getattr(self._torch, "cuda", None)
+        if cuda is not None and cuda.is_available():
+            cuda.empty_cache()
+
     def _load(self) -> None:
         if self._model is not None:
             return
-        try:
-            torch = importlib.import_module("torch")
-            transformers = importlib.import_module("transformers")
-        except ImportError as exc:
-            raise BackendError(f"backend transformers indisponível: {_HF_INSTALL_HINT}") from exc
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            self.checkpoint, revision=self.revision, trust_remote_code=False
-        )
-        tokenizer.padding_side = "left"
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        torch, transformers = self._modules()
+        self._load_tokenizer()
         model = transformers.AutoModelForCausalLM.from_pretrained(
             self.checkpoint,
             revision=self.revision,
@@ -354,8 +398,7 @@ class TransformersBackend:
             device_map=self.device_map,
         )
         model.eval()
-        self._torch, self._transformers = torch, transformers
-        self._tokenizer, self._model = tokenizer, model
+        self._model = model
 
     def _format(self, system: str, user: str) -> tuple[str, str]:
         tokenizer = self._tokenizer
