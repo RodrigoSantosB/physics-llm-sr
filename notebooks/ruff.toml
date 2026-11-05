@@ -1,0 +1,6 @@
+# O notebook repete os imports em cada etapa (sem estado oculto entre etapas) e ajusta o
+# sys.path antes de importar o pacote (Colab): essas regras não se aplicam a células.
+extend = "../pyproject.toml"
+
+[lint]
+extend-ignore = ["E402", "F811", "I001", "B905", "E501"]
