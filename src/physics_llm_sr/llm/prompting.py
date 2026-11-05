@@ -189,9 +189,7 @@ class PromptLibrary:
     def load(cls, prompts_dir: str | Path | None = None) -> PromptLibrary:
         """Lê templates e variantes de :func:`resolve_prompts_dir` (``prompts_dir``)."""
         root = resolve_prompts_dir(prompts_dir)
-        variants = {
-            p.stem: _parse_variant(p) for p in sorted((root / VARIANTS_DIR).glob("*.yaml"))
-        }
+        variants = {p.stem: _parse_variant(p) for p in sorted((root / VARIANTS_DIR).glob("*.yaml"))}
         return cls(
             system_template=(root / SYSTEM_FILE).read_text(encoding="utf-8"),
             evaluation_template=(root / EVALUATION_FILE).read_text(encoding="utf-8"),

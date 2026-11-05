@@ -54,7 +54,7 @@ class BackendError(LLMError):
 
 
 def validate_score(name: str, value: object) -> float:
-    """Converte ``value`` em ``float`` validado (número real, finito, em ``[0, 1]``).
+    """Escore validado: ``value`` como ``float`` real, finito e em ``[0, 1]``.
 
     ``bool`` é recusado apesar de ser subclasse de ``int``.
     """
@@ -138,7 +138,8 @@ class TextGenerationBackend(Protocol):
         ...
 
     def model_metadata(self) -> dict[str, Any]:
-        """Identificação reprodutível: ``backend``, ``checkpoint``, ``revision``,
-        ``quantization``, ``infra`` e parâmetros de inferência.
+        """Identificação reprodutível do modelo.
+
+        Chaves mínimas: ``backend``, ``checkpoint``, ``revision``, ``quantization``, ``infra``.
         """
         ...
