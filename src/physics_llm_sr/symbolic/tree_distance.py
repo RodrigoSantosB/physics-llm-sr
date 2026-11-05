@@ -20,9 +20,8 @@ Antes da comparação, se ``canonicalize`` (padrão), ambas as árvores passam p
 :func:`~physics_llm_sr.symbolic.canonicalization.structural_normal_form`.
 Equivalência numérica não implica distância 0 (``x + 0`` vs ``x`` → 1).
 
-``α`` vem de ``SymbolicConfig.tree_distance_constant_penalty``; as chaves
-``descend_on_operator_mismatch`` e ``canonicalize`` ainda não existem na
-configuração e têm defaults nomeados aqui (conforme GAP-10).
+``α`` vem de ``SymbolicConfig.tree_distance_constant_penalty``; as opções
+``descend_on_operator_mismatch`` e ``canonicalize`` de ``SymbolicConfig.tree_distance``.
 """
 
 from __future__ import annotations
@@ -62,7 +61,11 @@ class TreeDistanceParams:
     @classmethod
     def from_config(cls, cfg: SymbolicConfig) -> TreeDistanceParams:
         """Constrói a partir da seção ``symbolic`` da configuração."""
-        return cls(alpha=cfg.tree_distance_constant_penalty)
+        return cls(
+            alpha=cfg.tree_distance_constant_penalty,
+            descend_on_operator_mismatch=cfg.tree_distance.descend_on_operator_mismatch,
+            canonicalize=cfg.tree_distance.canonicalize,
+        )
 
 
 DEFAULT_TREE_DISTANCE_PARAMS = TreeDistanceParams()

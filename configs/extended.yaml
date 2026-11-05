@@ -32,12 +32,15 @@ data:
     levels: [0.01, 0.02, 0.03, 0.04, 0.05]
     locations: [inputs, target, both]
 symbolic:
-  division_epsilon: 1.0e-9            # semântica protegida (decisão de projeto)
+  division_epsilon: 0.001             # GAP-06: |den| < 0.001 -> 1
   division_fallback: 1.0
-  log_epsilon: 1.0e-9
-  exp_clip: 50.0
+  log_epsilon: 0.001                  # GAP-06: |x| < 0.001 -> 0; senão log|x|
+  exp_clip: 100.0                     # GAP-06
   power_clip: 1.0e6
-  tree_distance_constant_penalty: 0.5 # [hipótese GAP-11]
+  tree_distance_constant_penalty: 1.0 # GAP-10: alpha = 1.0
+  tree_distance:
+    descend_on_operator_mismatch: true  # GAP-10
+    canonicalize: true                  # GAP-10
 sr:
   population: 100                     # artigo
   generations: 50                     # artigo
@@ -55,14 +58,15 @@ sr:
     loss: huber                       # GAP-05: Huber no termo e, conforme artigo
     huber_delta: 1.0                  # [hipótese GAP-05]
   operators:
-    deap: [add, sub, mul, div, exp, log, sin, cos]
-    gplearn: [add, sub, mul, div, exp, log, sin, cos]
-    pysr: [add, sub, mul, div, exp, log, sin, cos]
+    deap: [add, sub, mul, div, neg, exp, log, sin, cos]          # GAP-06 (div protegido)
+    gplearn: [add, sub, mul, div, neg, exp, log, sin, cos]       # GAP-06
+    pysr: [add, sub, mul, div, pow, neg, exp, log, sin, cos]     # GAP-06 (^ = pow)
 loss:
   w1: 0.3333333333333333              # [hipótese GAP-01] pesos iguais; grade de sensibilidade à parte
   w2: 0.3333333333333333
   w3: 0.3333333333333334
   normalization: normalized           # GAP-02: e=MSE/Var(y_train), s=nós/max_nodes (desvio; só em extended)
+  baseline_weights: [0.5, 0.5, 0.0]  # GAP-01: baseline sem LLM (w3=0, w1:w2 renormalizados)
 llm:
   backend: transformers               # Colab A100, fp16
   temperature: 0.0
@@ -71,6 +75,10 @@ llm:
   failure_policy: retry
   prompt_variants: [A, B, C, D, E, F, G, H]
   cache_dir: .cache/llm
+  evaluation_scope: all               # replication: todos os candidatos únicos, com cache
+  batch_size: 1
+  request_timeout_s: 120.0
+  seed: 42
   models:                             # GAP-07 (revision: fixar SHA antes da execução final)
     - {name: mistral, checkpoint: mistralai/Mistral-7B-Instruct-v0.1, revision: null, quantization: fp16, infra: colab-a100}
     - {name: llama2, checkpoint: meta-llama/Llama-2-7b-chat-hf, revision: null, quantization: fp16, infra: colab-a100}

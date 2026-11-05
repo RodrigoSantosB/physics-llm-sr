@@ -19,9 +19,9 @@ Semântica protegida (parâmetros em :class:`ProtectionParams`, que espelha
   ``division_fallback`` (=1.0, mesmo comportamento da divisão protegida do
   gplearn, que devolve 1 quando o denominador é ~0).
 - ``log(x)``: ``log(|x|)`` se ``|x| >= log_epsilon``; caso contrário ``0.0``
-  (padrão gplearn). Note que o comentário em ``SymbolicConfig.log_epsilon``
-  descreve ``log(max(|x|, eps))``; a semântica adotada aqui é a do contrato
-  da PR (``|x| < eps -> 0``) e usa o mesmo parâmetro.
+  (padrão gplearn; GAP-06, eps = 0.001). Fronteira: o texto do GAP-06 usa
+  ``|x| > 0.001`` / ``|den| <= 0.001``; aqui a comparação é estrita (``<``),
+  diferença só em ``|x| == eps`` exatamente.
 - ``sqrt(x)``: ``sqrt(|x|)``.
 - ``exp(x)``: ``exp(clip(x, -exp_clip, exp_clip))``.
 - ``pow(a, b)``: se ``b`` é inteiro, potência real com sinal ``a**b``; se ``b``

@@ -19,7 +19,7 @@ WEIGHT_SUM_TOLERANCE = 1e-6
 
 ScenarioName = Literal["free_fall", "harmonic_motion", "damped_wave"]
 AlgorithmName = Literal["deap", "gplearn", "pysr"]
-OperatorName = Literal["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos", "pow"]
+OperatorName = Literal["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos", "pow", "sqrt"]
 PromptVariant = Literal["A", "B", "C", "D", "E", "F", "G", "H"]
 ExperimentName = Literal[
     "baseline", "llm_integration", "prompt_sensitivity", "noise_robustness", "biased_noise"
@@ -150,15 +150,25 @@ class DataConfig(_Strict):
         return self
 
 
-class SymbolicConfig(_Strict):
-    """Semântica protegida de operadores e penalidade da distância entre árvores."""
+class TreeDistanceConfig(_Strict):
+    """Opções da distância entre árvores (GAP-10)."""
 
-    division_epsilon: PositiveFloat = 1e-9  # |den| < eps -> resultado protegido
+    descend_on_operator_mismatch: bool = True  # operadores diferentes, mesma aridade: desce
+    canonicalize: bool = True  # forma normal estrutural antes de comparar
+
+
+class SymbolicConfig(_Strict):
+    """Semântica protegida de operadores (GAP-06) e distância entre árvores (GAP-10)."""
+
+    division_epsilon: PositiveFloat = 0.001  # GAP-06: |den| < eps -> resultado protegido
     division_fallback: float = 1.0  # valor devolvido na divisão protegida
-    log_epsilon: PositiveFloat = 1e-9  # log(max(|x|, eps))
-    exp_clip: PositiveFloat = 50.0  # exp(clip(x, -c, c)) evita overflow
+    log_epsilon: PositiveFloat = 0.001  # GAP-06: |x| < eps -> log = 0; senão log|x|
+    exp_clip: PositiveFloat = 100.0  # GAP-06: exp(clip(x, -c, c)) evita overflow
     power_clip: PositiveFloat = 1e6  # magnitude máxima após potência
-    tree_distance_constant_penalty: Probability = 0.5  # custo de trocar constantes diferentes
+    tree_distance_constant_penalty: Probability = (
+        1.0  # GAP-10: alpha (custo por |dv| de constantes)
+    )
+    tree_distance: TreeDistanceConfig = TreeDistanceConfig()
 
 
 class EarlyStoppingConfig(_Strict):
@@ -200,8 +210,13 @@ class PysrConfig(_Strict):
 
 
 def _default_operators() -> dict[AlgorithmName, list[OperatorName]]:
-    base: list[OperatorName] = ["add", "sub", "mul", "div", "exp", "log", "sin", "cos"]
-    return {"deap": list(base), "gplearn": list(base), "pysr": list(base)}
+    """Conjuntos do GAP-06 (sem ``sqrt``); ``div`` é protegido; PySR acrescenta ``pow``."""
+    base: list[OperatorName] = ["add", "sub", "mul", "div", "neg", "exp", "log", "sin", "cos"]
+    return {
+        "deap": list(base),
+        "gplearn": list(base),
+        "pysr": [*base[:4], "pow", *base[4:]],
+    }
 
 
 class SRConfig(_Strict):
@@ -223,12 +238,23 @@ class LossConfig(_Strict):
     w2: Annotated[float, Field(ge=0)] = 1 / 3  # [hipótese GAP-01]
     w3: Annotated[float, Field(ge=0)] = 1 / 3  # [hipótese GAP-01]
     normalization: Literal["literal", "normalized"] = "literal"  # GAP-02
+    #: Baseline sem LLM (GAP-01): w3 = 0, w1:w2 preservada e renormalizada.
+    baseline_weights: tuple[float, float, float] = (0.5, 0.5, 0.0)
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> LossConfig:
         total = self.w1 + self.w2 + self.w3
         if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
             raise ValueError(f"pesos w1+w2+w3 somam {total}; esperado 1")
+        return self
+
+    @model_validator(mode="after")
+    def _baseline_weights_valid(self) -> LossConfig:
+        w = self.baseline_weights
+        if any(x < 0 for x in w) or abs(sum(w) - 1.0) > WEIGHT_SUM_TOLERANCE:
+            raise ValueError(f"baseline_weights {w} devem ser >= 0 e somar 1")
+        if w[2] != 0.0:
+            raise ValueError(f"baseline_weights {w}: w3 deve ser 0 (sem avaliador LLM)")
         return self
 
 
@@ -253,6 +279,21 @@ class LLMConfig(_Strict):
     failure_policy: Literal["retry", "abort"] = "retry"
     prompt_variants: list[PromptVariant] = ["A", "B", "C", "D", "E", "F", "G", "H"]
     cache_dir: str = ".cache/llm"
+    prompts_dir: str | None = None  # None = prompts/ do repositório
+    batch_size: PositiveInt = 1
+    request_timeout_s: PositiveFloat = 120.0
+    seed: Annotated[int, Field(ge=0)] = 42
+    #: ``all`` = todos os candidatos únicos, com cache (replication); ``top_k`` só em extended.
+    evaluation_scope: Literal["all", "top_k"] = "all"
+    top_k: PositiveInt | None = None
+
+    @model_validator(mode="after")
+    def _scope_consistent(self) -> LLMConfig:
+        if self.evaluation_scope == "top_k" and self.top_k is None:
+            raise ValueError("llm.top_k é obrigatório quando evaluation_scope='top_k'")
+        if self.evaluation_scope == "all" and self.top_k is not None:
+            raise ValueError("llm.top_k só é válido com evaluation_scope='top_k'")
+        return self
 
 
 class ExperimentsConfig(_Strict):
@@ -286,6 +327,12 @@ class ExperimentConfig(_Strict):
             raise ValueError(
                 "loss.normalization='normalized' é desvio experimental; "
                 "permitido apenas em extended_analysis"
+            )
+        if self.track is Track.PAPER_REPLICATION and (
+            self.llm.evaluation_scope == "top_k" or self.llm.top_k is not None
+        ):
+            raise ValueError(
+                "llm.top_k/evaluation_scope='top_k' é desvio; permitido apenas em extended_analysis"
             )
         declared = {m.name for m in self.llm.models}
         unknown = [m for m in self.experiments.models if m not in declared]
