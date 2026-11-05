@@ -25,6 +25,8 @@ llm:
   prompt_variants: [E]
   cache_enabled: true
   cache_dir: .cache/llm_smoke
+  cache_significant_digits: 3        # GAP-14: constantes a 3 algarismos significativos na chave
+  cache_key_mode: exact               # 'structure' só em extended_analysis (desvio)
   ollama_endpoint: http://localhost:11434   # usado só com backend ollama
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
@@ -38,4 +40,8 @@ experiments:
   scenarios: [free_fall]
   algorithms: [deap, gplearn]
   models: [fake]
+  benchmark_prompt: E                 # Exp2: smoke usa o prompt E
+  noise_model: fake                   # Exp4/5 (não rodam no smoke): avaliador simulado
+  noise_prompt: E                     # Exp4/5: prompt das Tabelas 3/4 [hipótese GAP-12]
+  max_cell_seconds: null
 output_dir: results/smoke

@@ -13,7 +13,15 @@ from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.core_types import Mode, Track
 
 CONFIGS_DIR = Path(__file__).resolve().parents[2] / "configs"
-ALL_CONFIGS = ["smoke", "pilot", "colab_pilot", "replication", "extended"]
+ALL_CONFIGS = [
+    "smoke",
+    "pilot",
+    "pilot_extended",
+    "colab_pilot",
+    "colab_pilot_extended",
+    "replication",
+    "extended",
+]
 
 
 def _smoke_dict() -> dict[str, Any]:
@@ -283,3 +291,82 @@ def test_pilot_and_extended_may_use_ollama() -> None:
     parse_config(data)  # piloto local com Ollama (Q4) é permitido
     data["mode"], data["track"] = "full", "extended_analysis"
     parse_config(data)
+
+
+GPLEARN_042_DEFAULTS = {
+    "tournament_size": 20,
+    "p_crossover": 0.9,
+    "p_subtree_mutation": 0.01,
+    "p_hoist_mutation": 0.01,
+    "p_point_mutation": 0.01,
+    "init_depth": (2, 6),
+    "const_range": (-1.0, 1.0),
+}
+
+
+@pytest.mark.parametrize("name", ALL_CONFIGS)
+def test_gplearn_fields_default_to_gplearn_042(name: str) -> None:
+    cfg = load_config(CONFIGS_DIR / f"{name}.yaml")
+    for field, value in GPLEARN_042_DEFAULTS.items():
+        assert getattr(cfg.sr.gplearn, field) == value, field
+
+
+def test_gplearn_probabilities_must_not_exceed_one() -> None:
+    data = _smoke_dict()
+    data["sr"] = {"gplearn": {"p_crossover": 0.99, "p_point_mutation": 0.05}}
+    with pytest.raises(ConfigError, match="sr.gplearn"):
+        parse_config(data)
+
+
+@pytest.mark.parametrize("name", ALL_CONFIGS)
+def test_cache_key_fields_explicit(name: str) -> None:
+    cfg = load_config(CONFIGS_DIR / f"{name}.yaml")
+    assert (cfg.llm.cache_significant_digits, cfg.llm.cache_key_mode) == (3, "exact")
+
+
+def test_structure_cache_key_only_in_extended() -> None:
+    data = _smoke_dict()
+    data["llm"]["cache_key_mode"] = "structure"
+    with pytest.raises(ConfigError, match="cache_key_mode"):
+        parse_config(data)
+    data["track"] = "extended_analysis"
+    assert parse_config(data).llm.cache_key_mode == "structure"
+
+
+def test_cache_significant_digits_at_least_one() -> None:
+    data = _smoke_dict()
+    data["llm"]["cache_significant_digits"] = 0
+    with pytest.raises(ConfigError, match="cache_significant_digits"):
+        parse_config(data)
+
+
+@pytest.mark.parametrize(
+    ("base", "ext"), [("pilot", "pilot_extended"), ("colab_pilot", "colab_pilot_extended")]
+)
+def test_pilot_arms_share_matrix_and_differ_only_in_track(base: str, ext: str) -> None:
+    a = load_config(CONFIGS_DIR / f"{base}.yaml")
+    b = load_config(CONFIGS_DIR / f"{ext}.yaml")
+    assert a.track is Track.PAPER_REPLICATION and a.loss.normalization == "literal"
+    assert b.track is Track.EXTENDED_ANALYSIS and b.loss.normalization == "normalized"
+    assert a.output_dir != b.output_dir
+    da, db = a.model_dump(mode="json"), b.model_dump(mode="json")
+    for d in (da, db):
+        d.pop("track"), d.pop("output_dir"), d["loss"].pop("normalization")
+    assert da == db
+
+
+def test_pilot_pysr_is_reduced_and_benchmark_prompt_is_e() -> None:
+    local = load_config(CONFIGS_DIR / "pilot.yaml")
+    colab = load_config(CONFIGS_DIR / "colab_pilot.yaml")
+    assert local.sr.pysr.niterations is not None and local.sr.pysr.niterations < 50
+    assert colab.sr.pysr.niterations is None  # = sr.generations (50)
+    for cfg in (local, colab):
+        assert cfg.experiments.benchmark_prompt == "E"
+
+
+def test_noise_model_must_be_declared_when_noise_runs() -> None:
+    data = _smoke_dict()
+    data["experiments"]["run"] = ["noise_robustness"]
+    data["experiments"]["noise_model"] = "mistral"
+    with pytest.raises(ConfigError, match="noise_model"):
+        parse_config(data)

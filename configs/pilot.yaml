@@ -54,9 +54,25 @@ sr:
     init_max_depth: 3                 # [hipótese]
   gplearn:
     parsimony_coefficient: 0.001      # [hipótese]
+    tournament_size: 20               # [hipótese] default gplearn 0.4.2 (artigo não informa)
+    p_crossover: 0.9                  # [hipótese] default gplearn 0.4.2
+    p_subtree_mutation: 0.01          # [hipótese] default gplearn 0.4.2
+    p_hoist_mutation: 0.01            # [hipótese] default gplearn 0.4.2
+    p_point_mutation: 0.01            # [hipótese] default gplearn 0.4.2
+    init_depth: [2, 6]                # [hipótese] default gplearn 0.4.2
+    const_range: [-1.0, 1.0]          # [hipótese H-03] default gplearn 0.4.2
   pysr:
     loss: huber                       # GAP-05: Huber no termo e, conforme artigo
     huber_delta: 1.0                  # [hipótese GAP-05]
+    # Piloto local (GTX 1060, Ollama ~4 s/chamada): iterações REDUZIDAS só para validar o
+    # pipeline; não é a configuração do artigo (pós-spike PySR).
+    niterations: 5
+    populations: 1
+    population_size: 50
+    ncycles_per_iteration: 50
+    maxsize: 30                       # [hipótese] default PySR 2.x
+    parsimony: 0.0
+    timeout_in_seconds: 3600          # teto nativo do PySR por treino
   operators:
     deap: [add, sub, mul, div, neg, exp, log, sin, cos]          # GAP-06 (div protegido)
     gplearn: [add, sub, mul, div, neg, exp, log, sin, cos]       # GAP-06
@@ -76,6 +92,8 @@ llm:
   prompt_variants: [E]               # piloto: prompt E
   cache_enabled: true
   cache_dir: .cache/llm
+  cache_significant_digits: 3        # GAP-14: constantes a 3 algarismos significativos na chave
+  cache_key_mode: exact               # 'structure' só em extended_analysis (desvio)
   ollama_endpoint: http://localhost:11434
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
@@ -91,4 +109,8 @@ experiments:
   scenarios: [free_fall]
   algorithms: [deap, gplearn, pysr]
   models: [mistral]
+  benchmark_prompt: E               # Exp2 (Tabela 5): piloto usa o prompt E
+  noise_model: mistral                # Exp4/5: LLM das Tabelas 3/4 [hipótese GAP-12]
+  noise_prompt: E                     # Exp4/5: prompt das Tabelas 3/4 [hipótese GAP-12]
+  max_cell_seconds: 14400            # teto de tempo de parede por célula
 output_dir: results/pilot

@@ -54,9 +54,23 @@ sr:
     init_max_depth: 3                 # [hipótese]
   gplearn:
     parsimony_coefficient: 0.001      # [hipótese]
+    tournament_size: 20               # [hipótese] default gplearn 0.4.2 (artigo não informa)
+    p_crossover: 0.9                  # [hipótese] default gplearn 0.4.2
+    p_subtree_mutation: 0.01          # [hipótese] default gplearn 0.4.2
+    p_hoist_mutation: 0.01            # [hipótese] default gplearn 0.4.2
+    p_point_mutation: 0.01            # [hipótese] default gplearn 0.4.2
+    init_depth: [2, 6]                # [hipótese] default gplearn 0.4.2
+    const_range: [-1.0, 1.0]          # [hipótese H-03] default gplearn 0.4.2
   pysr:
     loss: huber                       # GAP-05: Huber no termo e, conforme artigo
     huber_delta: 1.0                  # [hipótese GAP-05]
+    niterations: null                 # null = sr.generations (50, artigo) [hipótese H-02]
+    populations: 1                    # [hipótese H-02]
+    population_size: null             # null = sr.population (100) [hipótese H-02]
+    ncycles_per_iteration: 380        # [hipótese] default PySR 2.x
+    maxsize: 30                       # [hipótese] default PySR 2.x
+    parsimony: 0.0                    # [hipótese] default PySR 2.x (w2*s já penaliza tamanho)
+    timeout_in_seconds: null
   operators:
     deap: [add, sub, mul, div, neg, exp, log, sin, cos]          # GAP-06 (div protegido)
     gplearn: [add, sub, mul, div, neg, exp, log, sin, cos]       # GAP-06
@@ -76,6 +90,8 @@ llm:
   prompt_variants: [A, B, C, D, E, F, G, H]
   cache_enabled: true
   cache_dir: .cache/llm
+  cache_significant_digits: 3        # GAP-14: constantes a 3 algarismos significativos na chave
+  cache_key_mode: exact               # 'structure' só em extended_analysis (desvio)
   ollama_endpoint: http://localhost:11434   # usado só com backend ollama
   evaluation_scope: all               # replication: todos os candidatos únicos, com cache
   batch_size: 1
@@ -91,4 +107,8 @@ experiments:
   scenarios: [free_fall, harmonic_motion, damped_wave]
   algorithms: [deap, gplearn, pysr]
   models: []                          # vazio = todos
+  benchmark_prompt: A               # Exp2 (Tabela 5): A por INC-08/GAP-12
+  noise_model: mistral                # Exp4/5: LLM das Tabelas 3/4 [hipótese GAP-12]
+  noise_prompt: E                     # Exp4/5: prompt das Tabelas 3/4 [hipótese GAP-12]
+  max_cell_seconds: null
 output_dir: results/replication
