@@ -96,6 +96,8 @@ def test_cells_import_only_package_and_standard_stack() -> None:
         "IPython",
         "importlib",
         "textwrap",
+        "subprocess",
+        "google",
     }
     bad: list[str] = []
     for idx, cell in enumerate(_load().cells):
@@ -109,6 +111,57 @@ def test_cells_import_only_package_and_standard_stack() -> None:
                 names = [node.module]
             bad += [f"célula {idx}: {n}" for n in names if n.split(".")[0] not in allowed]
     assert not bad, bad
+
+
+def _first_code() -> str:
+    return str(next(c.source for c in _load().cells if c.cell_type == "code"))
+
+
+def test_first_setup_cell_is_self_contained_and_ordered() -> None:
+    """Item 1: a 1ª célula não importa o pacote; ordem drive, clone, verificação, pip, path."""
+    src = _first_code()
+    assert "physics_llm_sr" not in src.replace("PHYSICS_LLM_SR_", "").replace("physics-llm-sr", "")
+    tree = ast.parse(src)
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
+    assert not any(name.startswith("physics_llm_sr") for name in imported)
+    tokens = ("drive.mount(", '"git", "clone"', "is_file()", '"pip", "install"', "sys.path.insert")
+    order = [src.index(token) for token in tokens]
+    assert order == sorted(order), order
+    assert "raise FileNotFoundError" in src and "REPO_URL" in src
+    assert re.search(r'^HF_HOME_DIR\s*=\s*""', src, re.MULTILINE)
+
+
+def test_notebook_has_numbered_colab_roadmap_and_stage18_uses_module() -> None:
+    nb = _load()
+    text = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown")
+    assert "## Roteiro Colab A100" in text
+    road = text[text.index("## Roteiro Colab A100") :]
+    for n in range(1, 7):
+        assert f"\n{n}. " in "\n" + road
+    code18 = "\n".join(c.source for c in _sections(nb)["18"] if c.cell_type == "code")
+    assert "loss_term_contributions" in code18
+    assert 'llm["w1·e"]' not in code18
+
+
+def test_notebook_matches_its_generator() -> None:
+    """O .ipynb é gerado por notebooks/build_notebook.py (conteúdo das células idêntico)."""
+    import importlib.util
+
+    path = NOTEBOOK.parent / "build_notebook.py"
+    spec = importlib.util.spec_from_file_location("build_notebook", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    built = module.build()
+    current = _load()
+    assert [(c.cell_type, c.source) for c in built.cells] == [
+        (c.cell_type, c.source) for c in current.cells
+    ]
 
 
 @pytest.mark.slow

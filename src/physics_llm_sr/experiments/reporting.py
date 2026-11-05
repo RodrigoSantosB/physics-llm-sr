@@ -188,6 +188,28 @@ def comparison_table(ok: pd.DataFrame, cfg: ExperimentConfig) -> pd.DataFrame:
     return out
 
 
+LOSS_TERM_COLUMNS = ("w1·e", "w2·s", "w3·c")
+LLM_FRACTION_COLUMN = "fração do termo LLM em L"
+
+
+def loss_term_contributions(ok: pd.DataFrame, w1: float, w2: float, w3: float) -> pd.DataFrame:
+    """Contribuição média de cada termo da perda final nas células com LLM (GAP-02).
+
+    Por (cenário, algoritmo): médias de ``w1·e``, ``w2·s``, ``w3·c`` e da fração
+    ``w3·c / L`` (calculada por linha, depois promediada). Vazio se não há células com LLM.
+    """
+    llm = ok[ok["llm"] != NONE].copy()
+    if llm.empty:
+        return empty_frame()
+    llm["w1·e"] = w1 * llm["final_e"]
+    llm["w2·s"] = w2 * llm["final_s"]
+    llm["w3·c"] = w3 * llm["final_c"]
+    llm[LLM_FRACTION_COLUMN] = llm["w3·c"] / (llm["w1·e"] + llm["w2·s"] + llm["w3·c"])
+    columns = [*LOSS_TERM_COLUMNS, LLM_FRACTION_COLUMN]
+    contributions: pd.DataFrame = llm.groupby(["scenario", "sr"])[columns].mean()
+    return contributions
+
+
 def replot(run_dir: Path) -> list[Path]:
     """Regenera as figuras a partir de ``results.parquet`` e ``history.parquet``."""
     run_dir = Path(run_dir)
