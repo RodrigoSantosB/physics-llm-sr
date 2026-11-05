@@ -1,0 +1,489 @@
+[
+  {
+    "weights": [
+      0.5,
+      0.5,
+      0.0
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 21.37,
+    "julia_loss_calls": 22851,
+    "best": "log(x1) / 0.11998348",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 4.5125995,
+        "equation": "31.942781",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 4.5126
+      },
+      {
+        "complexity": 3,
+        "loss": 4.0544653,
+        "equation": "x1 * 0.5310261",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 4.0545
+      },
+      {
+        "complexity": 4,
+        "loss": 3.3008533,
+        "equation": "log(x1) / 0.11998348",
+        "e": 2.6017,
+        "c": 0.9,
+        "L_recomputed": 3.3009
+      }
+    ],
+    "callback_calls": 22851,
+    "unique_strings": 13664,
+    "unique_canonical_keys": 12588,
+    "evaluator_calls": 12588,
+    "cache_hit_rate": 0.4491269528685834,
+    "parse_errors": {},
+    "python_seconds": 3.207
+  },
+  {
+    "weights": [
+      0.5,
+      0.5,
+      0.0
+    ],
+    "favored": null,
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 3.57,
+    "julia_loss_calls": 22851,
+    "best": "log(x1) / 0.11998348",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 4.5125995,
+        "equation": "31.942781",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 4.5126
+      },
+      {
+        "complexity": 3,
+        "loss": 4.0544653,
+        "equation": "x1 * 0.5310261",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 4.0545
+      },
+      {
+        "complexity": 4,
+        "loss": 3.3008533,
+        "equation": "log(x1) / 0.11998348",
+        "e": 2.6017,
+        "c": 0.9,
+        "L_recomputed": 3.3009
+      }
+    ],
+    "callback_calls": 22851,
+    "unique_strings": 13664,
+    "unique_canonical_keys": 12588,
+    "evaluator_calls": 12588,
+    "cache_hit_rate": 0.4491269528685834,
+    "parse_errors": {},
+    "python_seconds": 2.871
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 4.18,
+    "julia_loss_calls": 27290,
+    "best": "x1 * 0.531125",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 3.3083997,
+        "equation": "31.944002",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 3.3084
+      },
+      {
+        "complexity": 3,
+        "loss": 3.0029774,
+        "equation": "x1 * 0.531125",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 3.003
+      }
+    ],
+    "callback_calls": 27290,
+    "unique_strings": 18211,
+    "unique_canonical_keys": 16895,
+    "evaluator_calls": 16895,
+    "cache_hit_rate": 0.38090875778673505,
+    "parse_errors": {},
+    "python_seconds": 3.429
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333
+    ],
+    "favored": null,
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 2.16,
+    "julia_loss_calls": 22826,
+    "best": "(x1 * 0.3239104) + 13.971537",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 3.3083997,
+        "equation": "31.944002",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 3.3084
+      },
+      {
+        "complexity": 3,
+        "loss": 3.0029774,
+        "equation": "x1 * 0.531125",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 3.003
+      },
+      {
+        "complexity": 5,
+        "loss": 2.3082597,
+        "equation": "(x1 * 0.3239104) + 13.971537",
+        "e": 1.0248,
+        "c": 0.9,
+        "L_recomputed": 2.3083
+      }
+    ],
+    "callback_calls": 22826,
+    "unique_strings": 12564,
+    "unique_canonical_keys": 11006,
+    "evaluator_calls": 11006,
+    "cache_hit_rate": 0.5178305441163585,
+    "parse_errors": {},
+    "python_seconds": 1.724
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 3.3,
+    "julia_loss_calls": 27290,
+    "best": "x1 * 0.531125",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 3.3083997,
+        "equation": "31.944002",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 3.3084
+      },
+      {
+        "complexity": 3,
+        "loss": 3.0029774,
+        "equation": "x1 * 0.531125",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 3.003
+      }
+    ],
+    "callback_calls": 27290,
+    "unique_strings": 18211,
+    "unique_canonical_keys": 16895,
+    "evaluator_calls": 16895,
+    "cache_hit_rate": 0.38090875778673505,
+    "parse_errors": {},
+    "python_seconds": 2.734
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      5.0
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 2.68,
+    "julia_loss_calls": 18290,
+    "best": "((x1 ^ 0.5739601) / 0.33616567) - (cos(log(x1)) - 2.4433935)",
+    "best_has_favored": true,
+    "hof_frac_favored": 0.667,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 12.073327,
+        "equation": "x1",
+        "e": 21.72,
+        "c": 0.9,
+        "L_recomputed": 12.0733
+      },
+      {
+        "complexity": 2,
+        "loss": 10.722661,
+        "equation": "cos(x3)",
+        "e": 28.668,
+        "c": 0.1,
+        "L_recomputed": 10.7227
+      },
+      {
+        "complexity": 3,
+        "loss": 8.681178,
+        "equation": "x1 / 1.391042",
+        "e": 9.5435,
+        "c": 0.9,
+        "L_recomputed": 8.6812
+      },
+      {
+        "complexity": 4,
+        "loss": 7.7648396,
+        "equation": "x1 * cos(x3)",
+        "e": 17.7945,
+        "c": 0.1,
+        "L_recomputed": 7.7648
+      },
+      {
+        "complexity": 5,
+        "loss": 4.889752,
+        "equation": "31.256336 - cos(log(x1))",
+        "e": 8.1693,
+        "c": 0.1,
+        "L_recomputed": 4.8898
+      },
+      {
+        "complexity": 11,
+        "loss": 4.1689863,
+        "equation": "((x1 ^ 0.5739601) / 0.33616567) - (cos(log(x1)) - 2.4433935)",
+        "e": 0.007,
+        "c": 0.1,
+        "L_recomputed": 4.169
+      }
+    ],
+    "callback_calls": 18290,
+    "unique_strings": 10975,
+    "unique_canonical_keys": 9858,
+    "evaluator_calls": 9858,
+    "cache_hit_rate": 0.4610169491525423,
+    "parse_errors": {},
+    "python_seconds": 2.066
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      5.0
+    ],
+    "favored": null,
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": true,
+    "wall_seconds": 2.54,
+    "julia_loss_calls": 23379,
+    "best": "((x1 + 7.862318) * 0.32388976) + 11.435341",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 7.5083995,
+        "equation": "31.941555",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 7.5084
+      },
+      {
+        "complexity": 3,
+        "loss": 7.202977,
+        "equation": "x1 * 0.53107935",
+        "e": 5.1089,
+        "c": 0.9,
+        "L_recomputed": 7.203
+      },
+      {
+        "complexity": 7,
+        "loss": 7.174918,
+        "equation": "((x1 + 7.862318) * 0.32388976) + 11.435341",
+        "e": 1.0248,
+        "c": 0.9,
+        "L_recomputed": 7.1749
+      }
+    ],
+    "callback_calls": 23379,
+    "unique_strings": 14150,
+    "unique_canonical_keys": 12591,
+    "evaluator_calls": 12591,
+    "cache_hit_rate": 0.4614397536250481,
+    "parse_errors": {},
+    "python_seconds": 2.006
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      5.0
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": true,
+    "score_simplified": false,
+    "wall_seconds": 2.88,
+    "julia_loss_calls": 25920,
+    "best": "x1 * 0.5481471",
+    "best_has_favored": false,
+    "hof_frac_favored": 0.0,
+    "max_abs_loss_minus_recomputed": 3.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 6.725683,
+        "equation": "24.468788",
+        "e": 9.6771,
+        "c": 0.9,
+        "L_recomputed": 8.059
+      },
+      {
+        "complexity": 3,
+        "loss": 4.216362,
+        "equation": "x1 * 0.5481471",
+        "e": 5.1491,
+        "c": 0.9,
+        "L_recomputed": 7.2164
+      }
+    ],
+    "callback_calls": 25920,
+    "unique_strings": 17557,
+    "unique_canonical_keys": 16137,
+    "evaluator_calls": 16137,
+    "cache_hit_rate": 0.3774305555555556,
+    "parse_errors": {},
+    "python_seconds": 2.233
+  },
+  {
+    "weights": [
+      0.3333333333333333,
+      0.3333333333333333,
+      5.0
+    ],
+    "favored": "cos",
+    "call_py": true,
+    "niterations": 8,
+    "populations": 2,
+    "population_size": 30,
+    "parallelism": "serial",
+    "optimize_constants": true,
+    "should_simplify": false,
+    "score_simplified": false,
+    "wall_seconds": 2.57,
+    "julia_loss_calls": 30502,
+    "best": "x1 ^ cos(-13.185621)",
+    "best_has_favored": true,
+    "hof_frac_favored": 0.5,
+    "max_abs_loss_minus_recomputed": 0.0,
+    "hof": [
+      {
+        "complexity": 1,
+        "loss": 7.5083995,
+        "equation": "31.943392",
+        "e": 8.0252,
+        "c": 0.9,
+        "L_recomputed": 7.5084
+      },
+      {
+        "complexity": 4,
+        "loss": 3.6824718,
+        "equation": "x1 ^ cos(-13.185621)",
+        "e": 5.5474,
+        "c": 0.1,
+        "L_recomputed": 3.6825
+      }
+    ],
+    "callback_calls": 30502,
+    "unique_strings": 19291,
+    "unique_canonical_keys": 17489,
+    "evaluator_calls": 17489,
+    "cache_hit_rate": 0.4266277621139597,
+    "parse_errors": {},
+    "python_seconds": 2.047
+  }
+]
