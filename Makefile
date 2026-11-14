@@ -1,11 +1,12 @@
 .PHONY: install check test test-julia test-llm-real notebook-smoke notebook-smoke-01 \
-	notebook-smoke-02 notebook-smoke-03 clean-notebook-smoke lint format \
+	notebook-smoke-02 notebook-smoke-03 notebook-05 clean-notebook-smoke lint format \
 	smoke pilot pilot-colab report compare export-legado
 
 NOT_OPT_IN = not slow and not julia and not llm_real
 NB01 = notebooks/01_baseline_sem_llm.ipynb
 NB02 = notebooks/02_um_llm_um_caso.ipynb
 NB03 = notebooks/03_pipeline_completo.ipynb
+NB05 = notebooks/05_baseline_local.ipynb
 SMOKE_ROOT = $(CURDIR)/results/notebook_smoke/root
 NB_EXEC = uv run jupyter nbconvert --to notebook --execute \
 	--ExecutePreprocessor.timeout=3600 --ExecutePreprocessor.kernel_name=python3 \
@@ -39,7 +40,7 @@ test-llm-real:
 # (sem PySR). Os resultados do smoke ficam em results/notebook_smoke/ (raiz de projeto própria) e os
 # notebooks executados em results/notebook_smoke/*.executed.ipynb. O 04 (comparação com o artigo) lê
 # execuções existentes e não faz parte do smoke.
-notebook-smoke: clean-notebook-smoke notebook-smoke-01 notebook-smoke-02 notebook-smoke-03
+notebook-smoke: clean-notebook-smoke notebook-smoke-01 notebook-smoke-02 notebook-smoke-03 notebook-05
 
 # O smoke sempre parte do zero (a retomada exige o mesmo código/commit).
 clean-notebook-smoke:
@@ -57,6 +58,14 @@ notebook-smoke-03:
 	PHYSICS_LLM_SR_NOTEBOOK_SMOKE=1 PHYSICS_LLM_SR_NOTEBOOK_PRESET=smoke \
 	PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
 	$(NB_EXEC) $(NB03) --output 03_pipeline_completo.executed.ipynb
+
+# Notebook 05 (baseline local, sem LLM): execução real com gplearn e orçamento mínimo
+# (PHYSICS_LLM_SR_NB05_MINIMO=1: população e gerações mínimas, dados pequenos). Sem GPU nem Julia.
+# Resultados em results/notebook_smoke/root (raiz própria); notebook executado em
+# results/notebook_smoke/05_baseline_local.executed.ipynb. Para o estudo completo, abra o notebook.
+notebook-05:
+	PHYSICS_LLM_SR_NB05_MINIMO=1 PHYSICS_LLM_SR_PROJECT_ROOT="$(SMOKE_ROOT)" \
+	$(NB_EXEC) $(NB05) --output 05_baseline_local.executed.ipynb
 
 # ---------------------------------------------------------------- execução de experimentos
 # RESUME=1 retoma a execução mais recente com a mesma config (células concluídas são puladas).

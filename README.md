@@ -53,6 +53,29 @@ O PySR precisa de Julia, instalado automaticamente na primeira importação (lev
 O backend de piloto local usa [Ollama](https://ollama.com) com `mistral:7b-instruct`, `llama2:7b-chat` e `falcon:7b-instruct`
 (quantização Q4, um desvio declarado).
 
+## Execução local (Conda)
+
+O `notebooks/05_baseline_local.ipynb` roda o baseline **sem LLM** na sua máquina (CPU, sem GPU nem Ollama), em fases:
+**Fase 1** (regime sem ruído, σ = 0: valida o pipeline equação → dados → busca → métrica, com controle positivo e critério de consistência explícito) e
+**Fase 2** (desligada por padrão: ruído controlado, hiperparâmetros e outros algoritmos). Os três cenários (queda livre, MHS, onda amortecida) passam pelas mesmas funções
+(`physics_llm_sr.workflows.baseline_study`), com logs padronizados (`consistency.csv` e `study_log.jsonl` por execução). Passo a passo:
+
+```bash
+conda create -n physics-llm-sr python=3.12 -y
+conda activate physics-llm-sr
+pip install -e .                      # a partir da raiz do repositório (pasta com pyproject.toml)
+pip install jupyterlab ipykernel
+python -m ipykernel install --user --name physics-llm-sr --display-name "physics-llm-sr"
+# só se for usar ALGORITMO = "pysr": pré-aquece o PySR (instala o Julia na primeira vez; vários minutos, exige rede)
+python -c "import numpy as np, pysr; x = np.arange(1.0, 9.0); pysr.PySRRegressor(niterations=1, populations=1, population_size=10).fit(x.reshape(-1, 1), x)"
+jupyter lab                           # abra notebooks/05_baseline_local.ipynb a partir da raiz e escolha o kernel "physics-llm-sr"
+```
+
+- Os parâmetros ficam na célula da Etapa 1 (`ALGORITMO`, `CENARIOS`, `REPETICOES`, `SEMENTE_MESTRA`, `FORMULACAO_PERDA`, `ORCAMENTO`, limiares do critério e flags `EXECUTAR_FASE2_*`).
+  O padrão é `gplearn` (rápido em CPU, sem Julia); `deap` e `pysr` são alternativas (o PySR roda com orçamento reduzido e declarado).
+- Resultados em `<raiz>/results/nb05_baseline_local/<fase>/<algoritmo>/<hash do desenho>/`; a raiz é `PHYSICS_LLM_SR_PROJECT_ROOT` (ou o diretório atual). As execuções são retomáveis.
+- `make notebook-05` executa o notebook de ponta a ponta com orçamento mínimo (segundos; valida o encanamento, os números não valem como resultado).
+
 ## Notebooks (Google Colab)
 
 Quatro notebooks, **sem interseção entre si e fechados em si**: cada um tem a própria célula de preparo (monta o Drive, clona/atualiza o GitHub,
@@ -189,6 +212,7 @@ CLI direta: `uv run physics-llm-sr run --config configs/smoke.yaml [--only exp1,
   visualização e "O que verificar"; as células só importam e chamam `physics_llm_sr` (nenhuma lógica científica nas células).
 - O **03** percorre as etapas 00 a 18 do PRD (seção 10), cada uma com explicação teórica, referência ao artigo, chamada ao módulo e interpretação. Parâmetros no topo:
   `PRESET` (e sobrescritas `MODELOS`, `CENARIOS`, `EXPERIMENTOS`, `ALGORITMOS`, `REPETICOES`, `PROMPTS`; veja "Escolhendo o que rodar") e `LOAD_EXISTING_RUN` (opcional: caminho de um `run_dir` existente para **apresentar** os resultados sem executar).
+- O `05_baseline_local.ipynb` (execução local) é gerado por `notebooks/build_05_baseline_local.py` e testado em `tests/e2e/test_notebook_05.py`.
 - Os `.ipynb` são gerados por `notebooks/build_01_baseline.py`, `build_02_um_llm.py` e `build_03_pipeline_completo.py` (`uv run python notebooks/build_0X_*.py`); `tests/e2e/test_notebook.py` confere que cada `.ipynb` corresponde ao seu gerador.
 
 ## Comparação artigo × experimentos locais
