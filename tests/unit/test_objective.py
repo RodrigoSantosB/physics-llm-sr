@@ -223,3 +223,56 @@ def test_build_objective_max_nodes_per_algorithm_only_in_normalized() -> None:
     literal = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION)
     for algorithm in expected:
         assert build_objective(literal, fake, CTX, algorithm, False, FEATURES).max_nodes is None
+
+
+def test_build_objective_common_max_nodes_overrides_per_algorithm_rule() -> None:
+    """``loss.max_nodes`` (desvio, extended): denominador de ``s`` comum aos três algoritmos."""
+    from physics_llm_sr.config.schemas import ExperimentConfig
+    from physics_llm_sr.core_types import Mode, Track
+    from physics_llm_sr.optimization.objective import (
+        COMMON_MAX_NODES_RULE,
+        build_objective,
+        max_nodes_for,
+    )
+
+    data = ExperimentConfig(mode=Mode.SMOKE, track=Track.EXTENDED_ANALYSIS).model_dump()
+    data["loss"]["normalization"] = "normalized"
+    data["loss"]["max_nodes"] = 30
+    cfg = ExperimentConfig.model_validate(data)
+    fake = FakeEquationEvaluator.from_function(lambda e, c, v: ev(1, 1, 1))
+    for algorithm in ("deap", "gplearn", "pysr"):
+        assert max_nodes_for(cfg, algorithm) == 30
+        obj = build_objective(cfg, fake, CTX, algorithm, True, FEATURES)
+        assert obj.max_nodes == 30
+        assert obj.metadata["max_nodes_rule"] == COMMON_MAX_NODES_RULE
+        # s = nós / 30: "x" tem 1 nó
+        e, s = obj.components(parse_infix("x", FEATURES), X, Y)
+        assert s == pytest.approx(1 / 30)
+
+
+def test_max_nodes_none_keeps_per_algorithm_rule() -> None:
+    from physics_llm_sr.config.schemas import ExperimentConfig, LossConfig
+    from physics_llm_sr.core_types import Mode, Track
+    from physics_llm_sr.optimization.objective import max_nodes_for
+
+    assert LossConfig().max_nodes is None
+    data = ExperimentConfig(mode=Mode.SMOKE, track=Track.EXTENDED_ANALYSIS).model_dump()
+    data["loss"]["normalization"] = "normalized"
+    cfg = ExperimentConfig.model_validate(data)
+    assert max_nodes_for(cfg, "deap") == 2 ** (cfg.sr.deap.max_depth + 1) - 1
+
+
+def test_max_nodes_refused_in_paper_replication_and_must_be_positive() -> None:
+    from pydantic import ValidationError
+
+    from physics_llm_sr.config.schemas import ExperimentConfig
+    from physics_llm_sr.core_types import Mode, Track
+
+    data = ExperimentConfig(mode=Mode.SMOKE, track=Track.PAPER_REPLICATION).model_dump()
+    data["loss"]["max_nodes"] = 30
+    with pytest.raises(ValidationError, match="max_nodes"):
+        ExperimentConfig.model_validate(data)
+    data = ExperimentConfig(mode=Mode.SMOKE, track=Track.EXTENDED_ANALYSIS).model_dump()
+    data["loss"]["max_nodes"] = 0
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate(data)
