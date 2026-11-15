@@ -275,6 +275,9 @@ class LossConfig(_Strict):
     normalization: Literal["literal", "normalized"] = "literal"  # GAP-02
     #: Baseline sem LLM (GAP-01): w3 = 0, w1:w2 preservada e renormalizada.
     baseline_weights: tuple[float, float, float] = (0.5, 0.5, 0.0)
+    #: Denominador de ``s`` no modo ``normalized`` COMUM aos três algoritmos (desvio, só em
+    #: ``extended_analysis``). ``None`` = regra por algoritmo (``objective.MAX_NODES_RULES``).
+    max_nodes: PositiveInt | None = None
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> LossConfig:
@@ -387,6 +390,11 @@ class ExperimentConfig(_Strict):
         if self.track is Track.PAPER_REPLICATION and self.loss.normalization == "normalized":
             raise ValueError(
                 "loss.normalization='normalized' é desvio experimental; "
+                "permitido apenas em extended_analysis"
+            )
+        if self.track is Track.PAPER_REPLICATION and self.loss.max_nodes is not None:
+            raise ValueError(
+                "loss.max_nodes (denominador comum de s) é desvio do modo normalized; "
                 "permitido apenas em extended_analysis"
             )
         if self.track is Track.PAPER_REPLICATION and (

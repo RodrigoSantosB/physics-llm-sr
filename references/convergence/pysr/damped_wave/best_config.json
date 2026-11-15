@@ -1,8 +1,8 @@
 {
   "algoritmo": "pysr",
   "cenario": "damped_wave",
-  "rotulo": "perda normalizada + MSE + sqrt, ciclos 380, 20 it.",
-  "hipotese": "GAP-02/GAP-05/H5",
+  "rotulo": "PySR norm30 w=0.99, ops add/sub/mul/div/neg/cos/exp, 12x50, 100 ciclos, 60 it.",
+  "hipotese": "O15",
   "loss_formulation": "normalized",
   "search_budget": {
     "population": 100,
@@ -10,53 +10,67 @@
     "early_stopping": false,
     "min_relative_improvement": 0.001,
     "patience": 3,
-    "max_cell_seconds": 1800.0,
-    "pysr_niterations": 20,
+    "max_cell_seconds": 1500.0,
+    "pysr_niterations": 60,
     "pysr_population_size": 50,
-    "pysr_ncycles_per_iteration": 380
+    "pysr_ncycles_per_iteration": 100
   },
   "hyperparameters": {
+    "loss.max_nodes": 30,
     "sr.pysr.loss": "mse",
     "sr.operators.pysr": [
       "add",
       "sub",
       "mul",
       "div",
-      "pow",
       "neg",
-      "exp",
-      "log",
-      "sin",
       "cos",
-      "sqrt"
+      "exp"
+    ],
+    "sr.pysr.maxsize": 30,
+    "sr.pysr.populations": 12,
+    "loss.baseline_weights": [
+      0.99,
+      0.01,
+      0.0
     ]
   },
   "overrides": {
+    "sr.early_stopping.enabled": false,
     "loss.normalization": "normalized",
+    "loss.max_nodes": 30,
     "sr.pysr.loss": "mse",
     "sr.operators.pysr": [
       "add",
       "sub",
       "mul",
       "div",
-      "pow",
       "neg",
-      "exp",
-      "log",
-      "sin",
       "cos",
-      "sqrt"
+      "exp"
     ],
-    "sr.early_stopping.enabled": false,
-    "sr.pysr.ncycles_per_iteration": 380,
-    "sr.pysr.niterations": 20
+    "sr.pysr.maxsize": 30,
+    "sr.pysr.populations": 12,
+    "sr.pysr.population_size": 50,
+    "sr.pysr.ncycles_per_iteration": 100,
+    "sr.pysr.niterations": 60,
+    "loss.baseline_weights": [
+      0.99,
+      0.01,
+      0.0
+    ]
   },
   "desvios_do_baseline_literal": [
+    "sr.early_stopping.enabled",
     "loss.normalization",
+    "loss.max_nodes",
     "sr.pysr.loss",
     "sr.operators.pysr",
-    "sr.early_stopping.enabled",
-    "sr.pysr.niterations"
+    "sr.pysr.populations",
+    "sr.pysr.population_size",
+    "sr.pysr.ncycles_per_iteration",
+    "sr.pysr.niterations",
+    "loss.baseline_weights"
   ],
   "criterio": {
     "max_tree_distance": 0.05,
@@ -64,5 +78,18 @@
     "min_success_fraction": 0.6666666666666666
   },
   "confirmada": false,
-  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=20, pysr_population_size=50, pysr_ncycles_per_iteration=380)\nHIPERPARAMETROS = {\n    'sr.pysr.loss': 'mse',\n    'sr.operators.pysr': ['add', 'sub', 'mul', 'div', 'pow', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1500.0, pysr_niterations=60, pysr_population_size=50, pysr_ncycles_per_iteration=100)\nHIPERPARAMETROS = {\n    'loss.max_nodes': 30,\n    'sr.pysr.loss': 'mse',\n    'sr.operators.pysr': ['add', 'sub', 'mul', 'div', 'neg', 'cos', 'exp'],\n    'sr.pysr.maxsize': 30,\n    'sr.pysr.populations': 12,\n    'loss.baseline_weights': [0.99, 0.01, 0.0]\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())",
+  "rodada": "o15",
+  "convergiu": false,
+  "n_simulacoes": 100,
+  "melhor_resultado": {
+    "etapa": "triagem_n100 (interrompida)",
+    "n_sucesso": 0,
+    "n_execucoes": 3,
+    "mediana_um_menos_r2": 0.009344994662339734,
+    "mediana_distancia_min": 0.8,
+    "expressao_tipica": "cos((damping + t) * (-0.4547389645205142)) * cos((length - t) * 6.2819596750007785)",
+    "tempo_medio_s": null
+  },
+  "nota": "Não convergiu (rodada O15). w=(0,99;0,01), ops add/sub/mul/div/neg/cos/exp: cos(6,282*(length-t)) acha a fase e a frequência; o decaimento vira cos(0,455*(damping+t)) (1-R2 5e-4) ou fator constante (1-R2 1e-2). Próxima alavanca: mais iterações; forma exata mínima tem 13 nós e L menor que as aproximações (falha de busca, não da perda)."
 }

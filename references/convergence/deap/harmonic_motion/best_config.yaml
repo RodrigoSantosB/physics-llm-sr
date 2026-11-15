@@ -1,45 +1,97 @@
 algoritmo: deap
 cenario: harmonic_motion
-rotulo: perda normalizada
-hipotese: ''
+rotulo: DEAP norm30 w=0.9, prof. 8, 1000x300, sqrt
+hipotese: O15
 loss_formulation: normalized
 search_budget:
-  population: 500
-  generations: 200
+  population: 1000
+  generations: 300
   early_stopping: false
   min_relative_improvement: 0.001
   patience: 3
-  max_cell_seconds: 1800.0
+  max_cell_seconds: 1500.0
   pysr_niterations: 10
   pysr_population_size: 50
   pysr_ncycles_per_iteration: 50
 hyperparameters:
+  loss.max_nodes: 30
   sr.deap.crossover_prob: 0.7
   sr.deap.mutation_prob: 0.2
   sr.deap.tournament_size: 7
+  sr.operators.deap:
+  - add
+  - sub
+  - mul
+  - div
+  - neg
+  - exp
+  - log
+  - sin
+  - cos
+  - sqrt
+  loss.baseline_weights:
+  - 0.9
+  - 0.1
+  - 0.0
+  sr.deap.max_depth: 8
 overrides:
+  sr.early_stopping.enabled: false
   loss.normalization: normalized
+  loss.max_nodes: 30
   sr.deap.crossover_prob: 0.7
   sr.deap.mutation_prob: 0.2
   sr.deap.tournament_size: 7
-  sr.early_stopping.enabled: false
-  sr.generations: 200
-  sr.population: 500
+  sr.operators.deap:
+  - add
+  - sub
+  - mul
+  - div
+  - neg
+  - exp
+  - log
+  - sin
+  - cos
+  - sqrt
+  sr.population: 1000
+  sr.generations: 300
+  loss.baseline_weights:
+  - 0.9
+  - 0.1
+  - 0.0
+  sr.deap.max_depth: 8
 desvios_do_baseline_literal:
+- sr.early_stopping.enabled
 - loss.normalization
+- loss.max_nodes
 - sr.deap.crossover_prob
 - sr.deap.mutation_prob
 - sr.deap.tournament_size
-- sr.early_stopping.enabled
-- sr.generations
+- sr.operators.deap
 - sr.population
+- sr.generations
+- loss.baseline_weights
 criterio:
   max_tree_distance: 0.05
   max_one_minus_r2: 0.001
   min_success_fraction: 0.6666666666666666
 confirmada: false
-notebook_05: "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=500,\
-  \ generations=200, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0,\
+notebook_05: "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=1000,\
+  \ generations=300, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1500.0,\
   \ pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n\
-  \    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n    'sr.deap.tournament_size':\
-  \ 7\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  \    'loss.max_nodes': 30,\n    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n\
+  \    'sr.deap.tournament_size': 7,\n    'sr.operators.deap': ['add', 'sub', 'mul', 'div', 'neg', 'exp',\
+  \ 'log', 'sin', 'cos', 'sqrt'],\n    'loss.baseline_weights': [0.9, 0.1, 0.0],\n    'sr.deap.max_depth':\
+  \ 8\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+rodada: o15
+convergiu: false
+n_simulacoes: 100
+melhor_resultado:
+  etapa: triagem_n100
+  n_sucesso: 0
+  n_execucoes: 3
+  mediana_um_menos_r2: 0.28041095408694316
+  mediana_distancia_min: 1.0
+  expressao_tipica: cos(t + (t + t) / mass) / (log((-2.898643153710692)) / length)
+  tempo_medio_s: 264.76888428033516
+nota: 'Não convergiu (rodada O15). Sem otimização de constantes: aproximações cos(t + 2t/mass)*length/c
+  (1-R2 0,14-0,3); w=(0,5;0,5) devolve constante.'

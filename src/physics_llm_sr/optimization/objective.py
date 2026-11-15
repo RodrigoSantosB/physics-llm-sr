@@ -70,14 +70,25 @@ MAX_NODES_RULES: dict[str, str] = {
     ),
     "pysr": "sr.pysr.maxsize (limite de nós do PySR)",
 }
+#: Regra quando ``loss.max_nodes`` está definido (desvio, ``extended_analysis``).
+COMMON_MAX_NODES_RULE = "loss.max_nodes (denominador comum aos três algoritmos; desvio)"
 
 
 def max_nodes_for(cfg: ExperimentConfig, algorithm: str) -> int:
-    """``max_nodes`` do modo normalized para ``algorithm`` (:data:`MAX_NODES_RULES`).
+    """``max_nodes`` do modo normalized para ``algorithm``.
+
+    ``loss.max_nodes`` definido: esse valor, comum aos três algoritmos
+    (:data:`COMMON_MAX_NODES_RULE`). ``None``: regra por algoritmo (:data:`MAX_NODES_RULES`).
 
     Raises:
         ValueError: algoritmo sem regra.
     """
+    if algorithm not in MAX_NODES_RULES:
+        raise ValueError(
+            f"sem regra de max_nodes para {algorithm!r}; válidos: {sorted(MAX_NODES_RULES)}"
+        )
+    if cfg.loss.max_nodes is not None:
+        return int(cfg.loss.max_nodes)
     if algorithm == "deap":
         return int(2 ** (cfg.sr.deap.max_depth + 1) - 1)
     if algorithm == "gplearn":
@@ -319,7 +330,8 @@ def build_objective(
       demais: MSE.
     - ``normalized``: ``max_nodes`` por algoritmo (:func:`max_nodes_for`; regra em
       ``metadata["max_nodes_rule"]``): DEAP ``2**(max_depth+1)-1``, gplearn
-      ``2**(init_depth[1]+1)-1``, PySR ``maxsize``. Só afeta o modo normalized.
+      ``2**(init_depth[1]+1)-1``, PySR ``maxsize``; ou ``loss.max_nodes`` comum, se definido
+      (desvio). Só afeta o modo normalized.
     - Chave de deduplicação: ``llm.cache_significant_digits`` e ``llm.cache_key_mode``
       quando existirem na config; senão os defaults (3, ``exact``).
     """
@@ -344,5 +356,7 @@ def build_objective(
         key_mode=str(getattr(cfg.llm, "cache_key_mode", DEFAULT_CACHE_KEY_MODE)),
     )
     if normalized:
-        objective.metadata["max_nodes_rule"] = MAX_NODES_RULES[algorithm]
+        objective.metadata["max_nodes_rule"] = (
+            COMMON_MAX_NODES_RULE if loss.max_nodes is not None else MAX_NODES_RULES[algorithm]
+        )
     return objective

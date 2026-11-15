@@ -1,8 +1,8 @@
 {
   "algoritmo": "pysr",
   "cenario": "harmonic_motion",
-  "rotulo": "perda normalizada + MSE + sqrt, ciclos 380, 20 it.",
-  "hipotese": "GAP-02/GAP-05/H5",
+  "rotulo": "PySR norm30 w=0.9, ops add/sub/mul/div/cos/sqrt, 24x50, 100 ciclos, 60 it.",
+  "hipotese": "O15",
   "loss_formulation": "normalized",
   "search_budget": {
     "population": 100,
@@ -10,53 +10,65 @@
     "early_stopping": false,
     "min_relative_improvement": 0.001,
     "patience": 3,
-    "max_cell_seconds": 1800.0,
-    "pysr_niterations": 20,
+    "max_cell_seconds": 1500.0,
+    "pysr_niterations": 60,
     "pysr_population_size": 50,
-    "pysr_ncycles_per_iteration": 380
+    "pysr_ncycles_per_iteration": 100
   },
   "hyperparameters": {
+    "loss.max_nodes": 30,
     "sr.pysr.loss": "mse",
     "sr.operators.pysr": [
       "add",
       "sub",
       "mul",
       "div",
-      "pow",
-      "neg",
-      "exp",
-      "log",
-      "sin",
-      "cos",
-      "sqrt"
-    ]
-  },
-  "overrides": {
-    "loss.normalization": "normalized",
-    "sr.pysr.loss": "mse",
-    "sr.operators.pysr": [
-      "add",
-      "sub",
-      "mul",
-      "div",
-      "pow",
-      "neg",
-      "exp",
-      "log",
-      "sin",
       "cos",
       "sqrt"
     ],
+    "sr.pysr.maxsize": 30,
+    "sr.pysr.populations": 24,
+    "loss.baseline_weights": [
+      0.9,
+      0.1,
+      0.0
+    ]
+  },
+  "overrides": {
     "sr.early_stopping.enabled": false,
-    "sr.pysr.ncycles_per_iteration": 380,
-    "sr.pysr.niterations": 20
+    "loss.normalization": "normalized",
+    "loss.max_nodes": 30,
+    "sr.pysr.loss": "mse",
+    "sr.operators.pysr": [
+      "add",
+      "sub",
+      "mul",
+      "div",
+      "cos",
+      "sqrt"
+    ],
+    "sr.pysr.maxsize": 30,
+    "sr.pysr.populations": 24,
+    "sr.pysr.population_size": 50,
+    "sr.pysr.ncycles_per_iteration": 100,
+    "sr.pysr.niterations": 60,
+    "loss.baseline_weights": [
+      0.9,
+      0.1,
+      0.0
+    ]
   },
   "desvios_do_baseline_literal": [
+    "sr.early_stopping.enabled",
     "loss.normalization",
+    "loss.max_nodes",
     "sr.pysr.loss",
     "sr.operators.pysr",
-    "sr.early_stopping.enabled",
-    "sr.pysr.niterations"
+    "sr.pysr.populations",
+    "sr.pysr.population_size",
+    "sr.pysr.ncycles_per_iteration",
+    "sr.pysr.niterations",
+    "loss.baseline_weights"
   ],
   "criterio": {
     "max_tree_distance": 0.05,
@@ -64,5 +76,18 @@
     "min_success_fraction": 0.6666666666666666
   },
   "confirmada": false,
-  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=20, pysr_population_size=50, pysr_ncycles_per_iteration=380)\nHIPERPARAMETROS = {\n    'sr.pysr.loss': 'mse',\n    'sr.operators.pysr': ['add', 'sub', 'mul', 'div', 'pow', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1500.0, pysr_niterations=60, pysr_population_size=50, pysr_ncycles_per_iteration=100)\nHIPERPARAMETROS = {\n    'loss.max_nodes': 30,\n    'sr.pysr.loss': 'mse',\n    'sr.operators.pysr': ['add', 'sub', 'mul', 'div', 'cos', 'sqrt'],\n    'sr.pysr.maxsize': 30,\n    'sr.pysr.populations': 24,\n    'loss.baseline_weights': [0.9, 0.1, 0.0]\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())",
+  "rodada": "o15",
+  "convergiu": false,
+  "n_simulacoes": 100,
+  "melhor_resultado": {
+    "etapa": "triagem_n100e",
+    "n_sucesso": 0,
+    "n_execucoes": 3,
+    "mediana_um_menos_r2": 0.044474386605500404,
+    "mediana_distancia_min": 0.6666666666666666,
+    "expressao_tipica": "cos(t * (0.6824953338309946 - (sqrt(2.5688453280907892 / mass) - 4.2182157180315745) / mass)) * length",
+    "tempo_medio_s": 476.72728830100095
+  },
+  "nota": "Não convergiu (rodada O15). Perda normalizada (MSE/Var, nós/30) com w=(0,9;0,1): a busca chega a length*cos(t*(a + b/(c - mass))) (aproximação racional de 1/sqrt(mass); 1-R2 1e-3..2e-1) e não troca por sqrt(mass). Uma exploração com dados completos achou uma forma numericamente exata mas inchada (22 nós; distância 1). w=(0,5;0,5) devolve constante. Próxima alavanca: mais iterações/diversidade com dados completos (>= 25 min por execução nesta CPU) ou operador de otimização de expoente (pow com restrição de base variável)."
 }

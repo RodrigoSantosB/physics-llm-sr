@@ -61,6 +61,9 @@ SCENARIOS = ("free_fall", "harmonic_motion", "damped_wave")
 NOISE_TYPES = ("none", "zero_mean", "biased")
 NOISE_LOCATIONS = ("inputs", "target", "both")
 LOSS_FORMULATIONS = ("literal", "normalized")
+#: Caminhos ``loss.*`` aceitos em ``hyperparameters`` (formulação da perda do baseline, w3 = 0):
+#: denominador comum de ``s`` (só em normalized/extended) e pesos do baseline. Ambos são desvios.
+LOSS_HYPERPARAMETERS = ("loss.max_nodes", "loss.baseline_weights")
 BASE_CONFIG = "nb01_baseline.yaml"
 """Config base (em ``configs/``): sem LLM (``baseline_only``), pesos do baseline 0,5/0,5/0."""
 
@@ -297,9 +300,10 @@ class StudyDesign:
                 f"use {LOSS_FORMULATIONS}"
             )
         for path, _ in self.hyperparameters:
-            if not path.startswith("sr."):
+            if not (path.startswith("sr.") or path in LOSS_HYPERPARAMETERS):
                 raise StudyDesignError(
-                    f"hiperparâmetro {path!r} fora de 'sr.*': só a busca pode variar na Fase 2"
+                    f"hiperparâmetro {path!r} fora de 'sr.*'/{list(LOSS_HYPERPARAMETERS)}: "
+                    "só a busca e a formulação da perda do baseline podem variar na Fase 2"
                 )
 
     def design_hash(self) -> str:

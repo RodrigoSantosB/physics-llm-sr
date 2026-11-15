@@ -81,3 +81,7 @@ notebook_05: "ALGORITMO = 'gplearn'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO 
   \ 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.tournament_size':\
   \ 20,\n    'sr.operators.gplearn': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n\
   }\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+rodada: o15
+convergiu: false
+nota: 'Não convergiu (rodada O15, triagem interrompida): 1000x100 com 35 000 amostras estoura 1500 s por
+  célula.'

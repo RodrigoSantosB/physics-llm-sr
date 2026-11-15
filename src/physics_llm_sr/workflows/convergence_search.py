@@ -92,6 +92,10 @@ DEFAULT_REFINE_FACTORS: tuple[tuple[float, float], ...] = (
 """Fatores (população, gerações) testados no refinamento, além da própria configuração."""
 
 LOSS_NORMALIZATION_PATH = "loss.normalization"
+LOSS_FORMULATION_PATHS = frozenset(
+    {LOSS_NORMALIZATION_PATH, "loss.max_nodes", "loss.baseline_weights"}
+)
+"""Caminhos ``loss.*`` que uma candidata pode variar (formulação da perda do baseline, w3 = 0)."""
 
 MINIMAL_ENV = "PHYSICS_LLM_SR_NB06_MINIMO"
 """Variável de ambiente que pede dados e orçamento mínimos ao notebook 06 (testes)."""
@@ -195,7 +199,8 @@ class ConvergenceCriterion:
 class Candidate:
     """Uma configuração candidata: rótulo, sobrescritas de configuração e desvios declarados.
 
-    ``overrides``: caminho (``sr.*`` ou ``loss.normalization``) → valor. ``deviations``: caminhos
+    ``overrides``: caminho (``sr.*``, ``loss.normalization``, ``loss.max_nodes`` ou
+    ``loss.baseline_weights``) → valor. ``deviations``: caminhos
     cujo valor difere da configuração literal do baseline (``configs/nb01_baseline.yaml``, valores
     do artigo ou hipóteses H-02/H-03); calculado por :func:`make_candidate`. ``hypothesis``: qual
     hipótese de não convergência a candidata testa (H1..H5).
@@ -211,10 +216,10 @@ class Candidate:
         if not self.label.strip():
             raise ConvergenceSearchError("Candidate.label não pode ser vazio")
         for path in self.overrides:
-            if not (path.startswith("sr.") or path == LOSS_NORMALIZATION_PATH):
+            if not (path.startswith("sr.") or path in LOSS_FORMULATION_PATHS):
                 raise ConvergenceSearchError(
-                    f"caminho {path!r} fora de 'sr.*'/'loss.normalization': "
-                    "só a busca e a formulação da perda podem variar"
+                    f"caminho {path!r} fora de 'sr.*'/{sorted(LOSS_FORMULATION_PATHS)}: "
+                    "só a busca e a formulação da perda do baseline podem variar"
                 )
 
     def as_dict(self) -> dict[str, Any]:
