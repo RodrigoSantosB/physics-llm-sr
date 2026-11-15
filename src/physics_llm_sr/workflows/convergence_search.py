@@ -1114,6 +1114,11 @@ def best_config_dict(
         "desvios_do_baseline_literal": list(candidate.deviations),
         "criterio": asdict(criterion or ConvergenceCriterion()),
     }
+    out["confirmada"] = bool(
+        confirmation is not None
+        and not confirmation.table.empty
+        and confirmation.table.iloc[0]["converge"]
+    )
     if confirmation is not None and not confirmation.table.empty:
         row = confirmation.table.iloc[0]
         out["confirmacao"] = {

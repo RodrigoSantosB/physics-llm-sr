@@ -221,6 +221,7 @@ def test_export_best_writes_files_loadable_by_notebook_05(tmp_path: Path) -> Non
         "sr.population", "sr.generations", "sr.early_stopping.enabled", "sr.gplearn.const_range"
     ]  # fmt: skip
     assert data["confirmacao"]["n_execucoes"] == 1
+    assert data["confirmada"] is True
     assert "ORCAMENTO = SearchBudget(" in data["notebook_05"]
     table = pd.read_csv(paths["table"])
     assert set(table["etapa"]) == {cs.STAGE_SCREENING, cs.STAGE_CONFIRMATION}
