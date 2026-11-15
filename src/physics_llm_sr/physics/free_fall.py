@@ -95,10 +95,18 @@ class FreeFallScenario:
         return simulate_scenario(self, rng, ranges, n_points, max_steps)
 
     def equivalent_ground_truths(self) -> tuple[str, ...]:
-        """Formas infixas fisicamente equivalentes; a primeira é a GT do artigo."""
+        """Formas infixas fisicamente equivalentes; a primeira é a GT do artigo.
+
+        Identidades com ``h = g t²/2`` (``height`` = distância percorrida): ``g*t``,
+        ``2*height/t`` (encontrada pelo DEAP como ``height/t + height/t``) e ``t/(1/g)``
+        (forma usual do PySR, ``1/g`` em ponto flutuante).
+        """
+        g = self.config.gravity
         return (
             self.physical_context().ground_truth,
-            f"{self.config.gravity!r}*t",
+            f"{g!r}*t",
+            "2*height/t",
+            f"t/{1.0 / g!r}",
         )
 
     def physical_context(self) -> PhysicalContext:

@@ -65,6 +65,28 @@ def test_candidate_paths_and_declared_deviations() -> None:
     assert cand.deviations == ("sr.gplearn.const_range", "sr.early_stopping.enabled")
 
 
+def test_candidate_accepts_loss_formulation_paths_max_nodes_and_baseline_weights() -> None:
+    with pytest.raises(cs.ConvergenceSearchError):
+        cs.Candidate("x", {"loss.w1": 0.5})  # pesos do braço com LLM não variam aqui
+    cand = cs.make_candidate(
+        "n30",
+        {
+            "loss.normalization": "normalized",
+            "loss.max_nodes": 30,
+            "loss.baseline_weights": [0.9, 0.1, 0.0],
+        },
+    )
+    assert cand.deviations == ("loss.normalization", "loss.max_nodes", "loss.baseline_weights")
+    _, hyper, formulation = cs.split_overrides(cand.overrides)
+    assert formulation == "normalized"
+    assert dict(hyper) == {"loss.max_nodes": 30, "loss.baseline_weights": [0.9, 0.1, 0.0]}
+    small: dict[str, Any] = {"n_simulations": 6, "n_time_points": 20}
+    diag = cs.expressiveness_diagnosis("deap", "harmonic_motion", cand, **small)
+    const = diag[diag["tipo"] == "trivial: constante média"].iloc[0]
+    assert const["s"] == pytest.approx(1 / 30)
+    assert const["perda_L"] == pytest.approx(0.9 * const["e"] + 0.1 / 30)
+
+
 def test_default_search_spaces_are_ordered_and_valid() -> None:
     for algorithm in bs.ALGORITHMS:
         space = cs.SearchSpace.default(algorithm)

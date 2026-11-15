@@ -15,6 +15,7 @@ from physics_llm_sr.physics.harmonic_motion import harmonic_displacement
 from physics_llm_sr.symbolic.expression import evaluate, parse_infix
 
 TOL = 1e-9
+DIVISION_EPSILON = 1e-3  # symbolic.division_epsilon (GAP-06)
 COLUMNS = ("mass", "length", "height", "damping", "t")
 
 
@@ -120,15 +121,24 @@ def test_equivalent_ground_truths_reproduce_y_true(name: str) -> None:
     forms = scenario.equivalent_ground_truths()
     assert isinstance(forms, tuple) and forms
     assert scenario.physical_context().ground_truth in forms
-    traj = scenario.simulate(np.random.default_rng(2), cfg.sampling, 100, 1000)
-    for form in forms:
-        got = evaluate(parse_infix(form, variables=COLUMNS), traj.X, COLUMNS)
-        np.testing.assert_allclose(got, traj.y_true, rtol=1e-9, atol=1e-9, err_msg=form)
+    for seed in range(5):
+        traj = scenario.simulate(np.random.default_rng(seed), cfg.sampling, 100, 1000)
+        # Identidade matemática; a divisão protegida (|den| < 0,001 -> 1, GAP-06) só altera
+        # formas com ``/t`` em t ∈ (0; 0,001): esses instantes ficam fora da comparação.
+        keep = (traj.X[:, COLUMNS.index("t")] >= DIVISION_EPSILON) | (
+            traj.X[:, COLUMNS.index("t")] == 0.0
+        )
+        for form in forms:
+            got = evaluate(parse_infix(form, variables=COLUMNS), traj.X, COLUMNS)
+            np.testing.assert_allclose(
+                got[keep], traj.y_true[keep], rtol=1e-9, atol=1e-9, err_msg=form
+            )
 
 
 def test_free_fall_declares_both_equivalent_forms() -> None:
     forms = get_scenario("free_fall", PhysicsConfig()).equivalent_ground_truths()
-    assert forms == ("sqrt(2*9.81*height)", "9.81*t")
+    # h = g t²/2 ⇒ 2h/t = g t; t/(1/g) = g t (repr(1/g) = 0.1019367991845056)
+    assert forms == ("sqrt(2*9.81*height)", "9.81*t", "2*height/t", "t/0.1019367991845056")
     for name in ("harmonic_motion", "damped_wave"):
         sc = get_scenario(name, PhysicsConfig())
         assert sc.equivalent_ground_truths() == (sc.physical_context().ground_truth,)
