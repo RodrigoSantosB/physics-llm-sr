@@ -1,7 +1,7 @@
 algoritmo: gplearn
 cenario: harmonic_motion
-rotulo: perda normalizada + sqrt
-hipotese: ''
+rotulo: gplearn norm30 w=0.5, init (2,6), 1000x100
+hipotese: O15
 loss_formulation: normalized
 search_budget:
   population: 1000
@@ -9,19 +9,20 @@ search_budget:
   early_stopping: false
   min_relative_improvement: 0.001
   patience: 3
-  max_cell_seconds: 1800.0
+  max_cell_seconds: 1500.0
   pysr_niterations: 10
   pysr_population_size: 50
   pysr_ncycles_per_iteration: 50
 hyperparameters:
+  loss.max_nodes: 30
   sr.gplearn.const_range:
   - 0.0
   - 20.0
+  sr.gplearn.tournament_size: 20
   sr.gplearn.p_crossover: 0.7
+  sr.gplearn.p_subtree_mutation: 0.1
   sr.gplearn.p_hoist_mutation: 0.05
   sr.gplearn.p_point_mutation: 0.1
-  sr.gplearn.p_subtree_mutation: 0.1
-  sr.gplearn.tournament_size: 20
   sr.operators.gplearn:
   - add
   - sub
@@ -33,18 +34,25 @@ hyperparameters:
   - sin
   - cos
   - sqrt
+  sr.gplearn.init_depth:
+  - 2
+  - 6
+  loss.baseline_weights:
+  - 0.5
+  - 0.5
+  - 0.0
 overrides:
-  loss.normalization: normalized
   sr.early_stopping.enabled: false
-  sr.generations: 100
+  loss.normalization: normalized
+  loss.max_nodes: 30
   sr.gplearn.const_range:
   - 0.0
   - 20.0
+  sr.gplearn.tournament_size: 20
   sr.gplearn.p_crossover: 0.7
+  sr.gplearn.p_subtree_mutation: 0.1
   sr.gplearn.p_hoist_mutation: 0.05
   sr.gplearn.p_point_mutation: 0.1
-  sr.gplearn.p_subtree_mutation: 0.1
-  sr.gplearn.tournament_size: 20
   sr.operators.gplearn:
   - add
   - sub
@@ -57,27 +65,51 @@ overrides:
   - cos
   - sqrt
   sr.population: 1000
+  sr.generations: 100
+  sr.gplearn.init_depth:
+  - 2
+  - 6
+  loss.baseline_weights:
+  - 0.5
+  - 0.5
+  - 0.0
 desvios_do_baseline_literal:
-- loss.normalization
 - sr.early_stopping.enabled
-- sr.generations
+- loss.normalization
+- loss.max_nodes
 - sr.gplearn.const_range
+- sr.gplearn.tournament_size
 - sr.gplearn.p_crossover
+- sr.gplearn.p_subtree_mutation
 - sr.gplearn.p_hoist_mutation
 - sr.gplearn.p_point_mutation
-- sr.gplearn.p_subtree_mutation
-- sr.gplearn.tournament_size
 - sr.operators.gplearn
 - sr.population
+- sr.generations
+- sr.gplearn.init_depth
 criterio:
   max_tree_distance: 0.05
   max_one_minus_r2: 0.001
   min_success_fraction: 0.6666666666666666
 confirmada: false
 notebook_05: "ALGORITMO = 'gplearn'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=1000,\
-  \ generations=100, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0,\
+  \ generations=100, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1500.0,\
   \ pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n\
-  \    'sr.gplearn.const_range': [0.0, 20.0],\n    'sr.gplearn.p_crossover': 0.7,\n    'sr.gplearn.p_hoist_mutation':\
-  \ 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.tournament_size':\
-  \ 20,\n    'sr.operators.gplearn': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n\
-  }\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  \    'loss.max_nodes': 30,\n    'sr.gplearn.const_range': [0.0, 20.0],\n    'sr.gplearn.tournament_size':\
+  \ 20,\n    'sr.gplearn.p_crossover': 0.7,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.p_hoist_mutation':\
+  \ 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.operators.gplearn': ['add', 'sub', 'mul',\
+  \ 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt'],\n    'sr.gplearn.init_depth': [2, 6],\n    'loss.baseline_weights':\
+  \ [0.5, 0.5, 0.0]\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+rodada: o15
+convergiu: false
+n_simulacoes: 500
+melhor_resultado:
+  etapa: triagem (interrompida)
+  n_sucesso: 0
+  n_execucoes: 3
+  mediana_um_menos_r2: 0.7789677647180687
+  mediana_distancia_min: 1.0
+  expressao_tipica: cos(t + 19.672449419457653) / 6.704709098274049
+  tempo_medio_s: null
+nota: Não convergiu (rodada O15, triagem interrompida). Aproximações length*sin(...) (L normalizada ~0,34-0,47);
+  uma célula estourou 1500 s.

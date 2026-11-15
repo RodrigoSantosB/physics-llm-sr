@@ -34,3 +34,17 @@
 {"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "diagnostico", "segundos": 0.5}
 {"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "aplicacao", "segundos": 192.1, "convergiu": false}
 {"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "triagem_cenario", "segundos": 25.8, "convergiu": false}
+{"rodada": "o15", "algoritmo": "deap", "cenario": "damped_wave", "etapa": "triagem", "conjunto": "deap_dw", "segundos": 1282.6, "convergiu": false}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "exploracao", "conjunto": "pysr_hm_red", "segundos": 1356.7, "convergiu": false}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem (abortada)", "conjunto": "pysr_w", "segundos": 2040, "convergiu": false, "nota": "1a repeticao (w=0.9, ops completos, 8x50x200x40) estourou 1500 s; HOF preso em length*a^t / a^exp(t); abortada"}
+{"rodada": "o15", "algoritmo": "deap", "cenario": "harmonic_motion", "etapa": "triagem (abortada)", "conjunto": "deap", "segundos": 2040, "convergiu": false, "nota": "4 candidatas x ate 3 rep.; melhores: constante (w=0.5) e aproximacoes cos/exp(-exp(t)) (e>=0.2); abortada"}
+{"rodada": "o15", "algoritmo": "gplearn", "cenario": "harmonic_motion", "etapa": "triagem (abortada)", "conjunto": "gplearn", "segundos": 2040, "convergiu": false, "nota": "4 candidatas; 1 celula estourou 1500 s; melhores aproximacoes length*sin(...) e~0.3-0.5; abortada"}
+{"rodada": "o15", "algoritmo": "gplearn", "cenario": "damped_wave", "etapa": "triagem (abortada)", "conjunto": "gpl_dw", "segundos": 1900, "convergiu": false, "nota": "w=0.95 e 0.99, 1000x100, init (2,6): celulas estouraram 1500 s; abortada"}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_n100", "conjunto": "pysr_hm_min", "segundos": 875.2, "n_simulacoes": 100, "convergiu": false}
+{"rodada": "o15", "algoritmo": "deap", "cenario": "damped_wave", "etapa": "triagem_n100", "conjunto": "deap_dw2", "segundos": 868.1, "n_simulacoes": 100, "convergiu": false}
+{"rodada": "o15", "algoritmo": "deap", "cenario": "harmonic_motion", "etapa": "triagem_n100", "conjunto": "deap_hm2", "segundos": 1197.5, "n_simulacoes": 100, "convergiu": false}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_n100b (abortada)", "conjunto": "pysr_hm_pow", "segundos": 720, "convergiu": false, "n_simulacoes": 100, "nota": "ops com pow: 1a repeticao > 10 min, HOF com (mass/t)^c e a^mass (e~0.15); abortada"}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "damped_wave", "etapa": "triagem_n100", "conjunto": "dw ops reduzidos w=0.99", "segundos": 1380, "convergiu": false, "n_simulacoes": 100, "nota": "0/3; tipica cos(0.455*(damping+t))*cos(6.282*(length-t)); w=0.95 nao executada (tempo)"}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_n100c (abortada)", "conjunto": "sqrt, 150 it.", "segundos": 1230, "convergiu": false, "n_simulacoes": 100, "nota": "0/2 (3a rep. abortada: 2/3 impossivel); tipica length*cos(t*(a + b/(c - mass))) (aproximacao racional de 1/sqrt(mass)), 1-R2 ~1e-3..1e-2"}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_n100d", "conjunto": "pysr_hm_red3", "segundos": 274.5, "n_simulacoes": 100, "convergiu": false}
+{"rodada": "o15", "algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_n100e", "conjunto": "pysr_hm_24", "segundos": 1434.1, "n_simulacoes": 100, "convergiu": false}

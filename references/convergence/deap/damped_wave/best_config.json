@@ -1,8 +1,8 @@
 {
   "algoritmo": "deap",
   "cenario": "damped_wave",
-  "rotulo": "perda normalizada + sqrt",
-  "hipotese": "",
+  "rotulo": "DEAP norm30 w=0.99, prof. 8, 500x200",
+  "hipotese": "O15",
   "loss_formulation": "normalized",
   "search_budget": {
     "population": 500,
@@ -10,12 +10,13 @@
     "early_stopping": false,
     "min_relative_improvement": 0.001,
     "patience": 3,
-    "max_cell_seconds": 1800.0,
+    "max_cell_seconds": 1500.0,
     "pysr_niterations": 10,
     "pysr_population_size": 50,
     "pysr_ncycles_per_iteration": 50
   },
   "hyperparameters": {
+    "loss.max_nodes": 30,
     "sr.deap.crossover_prob": 0.7,
     "sr.deap.mutation_prob": 0.2,
     "sr.deap.tournament_size": 7,
@@ -28,17 +29,22 @@
       "exp",
       "log",
       "sin",
-      "cos",
-      "sqrt"
-    ]
+      "cos"
+    ],
+    "loss.baseline_weights": [
+      0.99,
+      0.01,
+      0.0
+    ],
+    "sr.deap.max_depth": 8
   },
   "overrides": {
+    "sr.early_stopping.enabled": false,
     "loss.normalization": "normalized",
+    "loss.max_nodes": 30,
     "sr.deap.crossover_prob": 0.7,
     "sr.deap.mutation_prob": 0.2,
     "sr.deap.tournament_size": 7,
-    "sr.early_stopping.enabled": false,
-    "sr.generations": 200,
     "sr.operators.deap": [
       "add",
       "sub",
@@ -48,20 +54,27 @@
       "exp",
       "log",
       "sin",
-      "cos",
-      "sqrt"
+      "cos"
     ],
-    "sr.population": 500
+    "sr.population": 500,
+    "sr.generations": 200,
+    "loss.baseline_weights": [
+      0.99,
+      0.01,
+      0.0
+    ],
+    "sr.deap.max_depth": 8
   },
   "desvios_do_baseline_literal": [
+    "sr.early_stopping.enabled",
     "loss.normalization",
+    "loss.max_nodes",
     "sr.deap.crossover_prob",
     "sr.deap.mutation_prob",
     "sr.deap.tournament_size",
-    "sr.early_stopping.enabled",
+    "sr.population",
     "sr.generations",
-    "sr.operators.deap",
-    "sr.population"
+    "loss.baseline_weights"
   ],
   "criterio": {
     "max_tree_distance": 0.05,
@@ -69,5 +82,18 @@
     "min_success_fraction": 0.6666666666666666
   },
   "confirmada": false,
-  "notebook_05": "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=500, generations=200, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n    'sr.deap.tournament_size': 7,\n    'sr.operators.deap': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  "notebook_05": "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=500, generations=200, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1500.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'loss.max_nodes': 30,\n    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n    'sr.deap.tournament_size': 7,\n    'sr.operators.deap': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos'],\n    'loss.baseline_weights': [0.99, 0.01, 0.0],\n    'sr.deap.max_depth': 8\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())",
+  "rodada": "o15",
+  "convergiu": false,
+  "n_simulacoes": 500,
+  "melhor_resultado": {
+    "etapa": "triagem",
+    "n_sucesso": 0,
+    "n_execucoes": 3,
+    "mediana_um_menos_r2": 0.19766197397391694,
+    "mediana_distancia_min": 1.0,
+    "expressao_tipica": "cos((-4.2179694348501195) * (log((-4.452222398260974)) * (t - length))) / exp(t * damping * 0.7046152672499026 * 0.7046152672499026)",
+    "tempo_medio_s": 339.4977659649982
+  },
+  "nota": "Não convergiu (rodada O15). Melhor repetição: cos(6,299*(t-length))/exp(0,4965*damping*t) (1-R2 4,5e-5; constantes aproximadas, estrutura diferente da referência: distância 0,875); mediana 1-R2 ~0,2-0,4."
 }

@@ -446,6 +446,84 @@ normalizada do PySR com Huber também é bloqueada pelo diagnóstico (uma trivia
 Conclusão: com a perda literal os cenários oscilatórios são inalcançáveis por construção; com a perda normalizada atual, o termo de
 tamanho fica fraco demais e a busca não converge no orçamento testado.
 
+### Rodada O15: convergência dos cenários oscilatórios (sem ruído)
+
+**Desvios declarados (trilha `extended_analysis`, nunca nas tabelas de reprodução):** perda `normalized` com `e = MSE/Var(y_treino)`
+(PySR com `sr.pysr.loss = mse`, coerente com DEAP/gplearn) e `s = nós/max_nodes` com **`loss.max_nodes = 30` comum aos três
+algoritmos** (campo novo, opcional; `None` mantém a regra por algoritmo de `MAX_NODES_RULES`; recusado em `paper_replication`, porque
+ali a perda é literal e o campo não teria efeito declarado); pesos do baseline `loss.baseline_weights` ∈ {(0,5; 0,5), (0,9; 0,1),
+(0,95; 0,05), (0,99; 0,01)} (w3 = 0, soma 1, validados no esquema); `sqrt` no conjunto de operadores (MHS); DEAP com profundidade
+máxima 6–8; gplearn com `init_depth = (2, 6)` e `const_range = (0, 20)` (contém 2π e 10); conjuntos reduzidos de operadores no
+PySR (MHS: `add, sub, mul, div, cos, sqrt`; onda: `add, sub, mul, div, neg, cos, exp`); parada antecipada desligada. Por tempo de
+parede, a partir da segunda metade da rodada o PySR e o DEAP usaram **100 simulações** (`n_simulations = 100`, ≈ 7 000 amostras de
+treino, mesmo gerador) em vez de 500; está marcado na coluna `n_simulacoes` das tabelas.
+
+**Diagnóstico de expressividade** (dados de treino limpos, semente 42; `L` da constante média, da referência e da melhor trivial):
+
+| cenário | formulação | L(constante) | L(referência) | L(melhor trivial) | trivial vence? |
+| --- | --- | --- | --- | --- | --- |
+| MHS | literal (0,5; 0,5) | 0,521 | 4,500 | 0,521 | sim |
+| MHS | normalizada, 30 nós, (0,5; 0,5) | 0,517 | 0,150 | 0,517 | não |
+| MHS | normalizada, 30 nós, (0,9; 0,1) | 0,903 | 0,030 | 0,903 | não |
+| MHS | normalizada, 30 nós, (0,95; 0,05) | 0,952 | 0,015 | 0,952 | não |
+| MHS | normalizada, 30 nós, (0,99; 0,01) | 0,990 | 0,003 | 0,990 | não |
+| onda | literal (0,5; 0,5) | 0,696 | 9,000 | 0,696 | sim |
+| onda | normalizada, 30 nós, (0,5; 0,5) | 0,517 | 0,300 | 0,517 | não |
+| onda | normalizada, 30 nós, (0,9; 0,1) | 0,903 | 0,060 | 0,867 | não |
+| onda | normalizada, 30 nós, (0,95; 0,05) | 0,952 | 0,030 | 0,909 | não |
+| onda | normalizada, 30 nós, (0,99; 0,01) | 0,990 | 0,006 | 0,944 | não |
+
+Na onda há uma ressalva que o teste das triviais não pega: a forma exata mínima `exp(-0.5*damping*t)*cos(2π*(length-t))` tem 13 nós
+(a referência literal tem 18) e a aproximação sem decaimento `cos(2π*(length-t))` tem 6 nós e `e = 0,029`. Com (0,5; 0,5) a
+aproximação vence (`L = 0,114` contra 0,217) e com (0,9; 0,1) quase empata (0,046 contra 0,043); só com `w2 ≤ 0,05` a forma exata é o
+mínimo com folga. No MHS qualquer peso normalizado deixa a referência como mínimo, mas o MHS não dá crédito parcial: `length*cos(c*t)`
+tem `e > 1` (pior que a constante) para qualquer `c` sem a dependência em `mass`.
+
+**Resultados** (3 repetições, semente mestra 42; critério igual ao da busca anterior; detalhes em
+`references/convergence/<alg>/<cenário>/search_table.csv`, linhas `rodada = o15`):
+
+| algoritmo × cenário | melhor configuração testada | sucesso | `1 − R²` (mediana / melhor) | expressão típica | tempo por execução |
+| --- | --- | --- | --- | --- | --- |
+| PySR × MHS | w = (0,9; 0,1), ops mínimos, 12 × 50, 100 ciclos, 60 it., 100 simulações | 0/3 | 0,19 / 1,6e-3 | `length*cos(t*(a + b/(c - mass)))` | 212 s |
+| PySR × MHS | idem, 150 it. | 0/2 | 1,6e-3 / 1,6e-3 | idem | ≈ 490 s |
+| PySR × MHS | idem, 24 populações | 0/3 | 0,044 / 9,5e-3 | `length*cos(t*(a - (sqrt(b/mass) - c)/mass))` | 477 s |
+| PySR × MHS | w = (0,5; 0,5) | 0/3 | 1,0 | constante | 78 s |
+| PySR × MHS | ops completos + `sqrt`, 8 × 50, 200 ciclos, 40 it., 500 simulações | 0/1 (abortada) | — | `length*a^t` | > 1500 s |
+| PySR × MHS (exploração, 1 rep.) | ops `add…sin,cos,sqrt`, 8 × 50, 200 ciclos, 30 it., 500 simulações | 0/1 | 0 (exata) | forma exata inchada (22 nós) | 1353 s |
+| PySR × onda | w = (0,99; 0,01), ops `add,sub,mul,div,neg,cos,exp`, 12 × 50, 100 ciclos, 60 it., 100 simulações | 0/3 | 9,3e-3 / 5,2e-4 | `cos(0.455*(damping+t))*cos(6.282*(length-t))` | 458 s |
+| DEAP × MHS | w = (0,9; 0,1), prof. 8, 1000 × 300, `sqrt`, 100 simulações | 0/3 | 0,28 | `cos(t + 2t/mass)*length/c` | 265 s |
+| DEAP × onda | w = (0,99; 0,01), prof. 8, 500 × 200 | 0/3 | 0,20 / 4,5e-5 | `cos(6.299*(t-length))/exp(0.4965*damping*t)` | 339 s |
+| gplearn × MHS / onda | 4 / 2 pesos, `init_depth (2, 6)`, 1000 × 100 | interrompida | — | `length*sin(...)` | > 1500 s (estouro) |
+
+**Nenhuma combinação convergiu**; não houve confirmação em sementes novas (só se confirma o que converge) e os `best_config.*` desses
+cenários registram a melhor configuração testada com `convergiu: false`. Verificação de formas equivalentes: a única expressão
+numericamente exata (erro máximo no grid denso 5e-11) é a da exploração do PySR,
+`cos(t/sqrt(mass) + (t*1.1622776601683795 + t)/sqrt(mass)) / 0.5757 / (0.5757/length) / 3.0169`: a frequência vale √10 por soma de
+constantes ajustadas e o fator de amplitude vale 1 só aproximadamente, logo **não** é identidade com os parâmetros fixos e não foi
+declarada. A melhor repetição do DEAP na onda tem constantes aproximadas (6,299 ≠ 2π; 0,4965 ≠ 0,5): ajuste numérico, não
+equivalência. Nos oscilatórios nenhuma forma nova foi declarada em `equivalent_ground_truths`.
+
+**Por que não converge (com números).** MHS: o atalho que a busca acha é a aproximação racional de `sqrt(10/mass)` por
+`a + b/(c − mass)` (10 nós, `e ≈ 0,08`, `L ≈ 0,11` com w = (0,9; 0,1)), um mínimo local: trocar `(c − mass)` por `sqrt(mass)` exige
+duas mutações seguidas sem ganho intermediário, embora a referência tenha `L = 0,03`. Com w = (0,5; 0,5) a pressão de tamanho impede
+até os degraus intermediários e a busca devolve a constante. DEAP e gplearn não otimizam constantes: não ajustam `√10`/`2π` com a
+precisão exigida (`1 − R² ≤ 1e-3` pede erro relativo de frequência ≲ 1%). Onda: o PySR acha a fase `cos(2π(length − t))` em todas as
+repetições, mas o fator `exp(-damping*t/2)` (produto `damping*t` dentro de `exp`) não aparece em 60 iterações; a forma exata mínima
+tem `L` menor que as aproximações encontradas (0,0043 contra 0,0050 com w = (0,99; 0,01)), logo é falha de busca, não da perda.
+
+**Próximas alavancas.** (1) Orçamento do PySR com os dados completos (≥ 25 min por execução nesta CPU; Colab/A100 ou execução
+noturna) e mais populações; (2) `pow` com expoente otimizável restrito a base variável (`constraints` do PySR, hoje fora do
+esquema) para o MHS; (3) para DEAP/gplearn, otimização local de constantes (não existe nos adaptadores atuais). A formulação
+normalizada com 30 nós e `w2 ≤ 0,1` é a única entre as testadas em que a referência é o mínimo da perda nos dois cenários.
+
+**Tempo.** ≈ 3 h de parede (DEAP/gplearn em até 8 processos em paralelo com o PySR em série); soma das etapas ≈ 5 h 10 min;
+registro por etapa (`rodada = o15`, com etapas abortadas e motivo) em `references/convergence/timings.jsonl`.
+
+**Formas equivalentes declaradas nesta rodada** (queda livre, identidades com `h = g t²/2`, teste numérico em
+`tests/scientific/test_physics_gt.py`): `2*height/t` (o DEAP achou `height/t + height/t`) e `t/0.1019367991845056` (`repr(1/g)`,
+forma usual do PySR). A divisão protegida (|t| < 0,001 → 1) só altera essas formas em t ∈ (0; 0,001), instantes excluídos da
+comparação no teste.
+
 ### Tempo de parede por etapa (s; execuções em paralelo competindo pela CPU de 12 núcleos)
 
 | algoritmo × cenário | triagem | refinamento | confirmação | aplicação | triagem do cenário |
@@ -461,7 +539,7 @@ Total ≈ 3 h 35 min de parede. Detalhe por etapa em `references/convergence/tim
 
 ### Achados levados ao orquestrador (não alterados aqui)
 
-1. Formas exatamente equivalentes não declaradas: `2*height/t` (DEAP encontrou `height / t + height / t`, exato pois `h = g t²/2`)
+1. (Resolvido na rodada O15: declaradas.) Formas exatamente equivalentes não declaradas: `2*height/t` (DEAP encontrou `height / t + height / t`, exato pois `h = g t²/2`)
    e `t / 0.10194` (PySR). A métrica secundária só declara `9.81*t`; a canonicalização não trata `u / c` nem `u + u`.
 2. H-03 diz DEAP `U(−1, 1)` com a chave `sr.deap.ephemeral_range`; o adaptador usa `U(−10, 10)` fixo (sem campo no esquema).
 3. PySR `normalized` + Huber: escala incoerente (Huber/Var(y)); proposta: normalizar `e` pelo erro do preditor constante na mesma

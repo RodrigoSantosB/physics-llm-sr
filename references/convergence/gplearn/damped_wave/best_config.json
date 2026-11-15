@@ -84,5 +84,8 @@
     "min_success_fraction": 0.6666666666666666
   },
   "confirmada": false,
-  "notebook_05": "ALGORITMO = 'gplearn'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=1000, generations=100, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'sr.gplearn.const_range': [0.0, 20.0],\n    'sr.gplearn.p_crossover': 0.7,\n    'sr.gplearn.p_hoist_mutation': 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.tournament_size': 20,\n    'sr.operators.gplearn': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+  "notebook_05": "ALGORITMO = 'gplearn'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=1000, generations=100, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'sr.gplearn.const_range': [0.0, 20.0],\n    'sr.gplearn.p_crossover': 0.7,\n    'sr.gplearn.p_hoist_mutation': 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.tournament_size': 20,\n    'sr.operators.gplearn': ['add', 'sub', 'mul', 'div', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())",
+  "rodada": "o15",
+  "convergiu": false,
+  "nota": "Não convergiu (rodada O15, triagem interrompida): 1000x100 com 35 000 amostras estoura 1500 s por célula."
 }
