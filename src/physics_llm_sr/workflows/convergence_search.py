@@ -702,7 +702,28 @@ def _write_stage_log(
             }
             lines.append(json.dumps(bs._json_safe(entry), ensure_ascii=False, default=str))
     stage_dir.mkdir(parents=True, exist_ok=True)
-    (stage_dir / STAGE_LOG_FILE).write_text("\n".join(lines) + ("\n" if lines else ""), "utf-8")
+    path = stage_dir / STAGE_LOG_FILE
+    if stage == STAGE_CONFIRMATION and path.exists():
+        # a confirmação acumula configurações: mantém as linhas de outras candidatas
+        kept = [
+            line
+            for line in path.read_text("utf-8").splitlines()
+            if line.strip() and json.loads(line).get("rotulo") not in reports
+        ]
+        lines = kept + lines
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), "utf-8")
+
+
+def _write_stage_table(stage_dir: Path, stage: str, table: pd.DataFrame) -> pd.DataFrame:
+    """Grava ``search_table.csv`` da etapa (a confirmação acumula candidatas por rótulo)."""
+    path = stage_dir / SEARCH_TABLE_FILE
+    out = table
+    if stage == STAGE_CONFIRMATION and path.exists():
+        old = pd.read_csv(path)
+        old = old[~old["rotulo"].isin(table["rotulo"])]
+        out = pd.concat([old, table], ignore_index=True) if not old.empty else table
+    out.to_csv(path, index=False)
+    return out
 
 
 def run_stage(
@@ -795,7 +816,7 @@ def run_stage(
             executor.shutdown()
     table = rank_table(pd.DataFrame(rows, columns=list(TABLE_COLUMNS)))
     _write_stage_log(stage_dir, stage, reports, cands, crit)
-    table.to_csv(stage_dir / SEARCH_TABLE_FILE, index=False)
+    _write_stage_table(stage_dir, stage, table)
     return StageResult(
         stage=stage,
         algorithm=algorithm,
@@ -891,36 +912,128 @@ def confirm(
     used_seeds: Iterable[int] = (),
     criterion: ConvergenceCriterion | None = None,
     output_root: Path | str = OUTPUT_ROOT,
-    **kwargs: Any,
+    parallel: int = 1,
+    n_simulations: int = 500,
+    n_time_points: int = 100,
+    max_cell_seconds: float | None = 1800.0,
+    progress: Callable[[str], None] | None = None,
 ) -> StageResult:
-    """Confirmação em SEMENTES NOVAS: semente mestra ``search_master_seed + seed_offset``.
+    """Confirmação em SEMENTES NOVAS, disjuntas das usadas na busca.
 
+    Em série (``parallel = 1``): um desenho com ``n_repetitions`` repetições e semente mestra
+    ``search_master_seed + seed_offset``. Em paralelo (``parallel > 1``, DEAP/gplearn): uma
+    repetição por desenho, com sementes mestras ``search_master_seed + seed_offset + k``
+    (``k = 0..n_repetitions-1``), executadas em processos simultâneos. Nos dois modos os dados, a
+    divisão treino/validação/teste e a busca de cada repetição mudam com a semente.
     ``used_seeds``: sementes de busca já usadas (triagem/refinamento); se alguma reaparecer, a
     confirmação é recusada (:class:`ConvergenceSearchError`) — evita escolher a semente sortuda.
-    Os dados, a divisão treino/validação/teste e a busca de cada repetição mudam com a semente.
     """
     if seed_offset == 0:
         raise ConvergenceSearchError("seed_offset = 0 repetiria as sementes da busca")
     if n_repetitions < 1:
         raise ConvergenceSearchError("n_repetitions deve ser >= 1")
-    result = run_stage(
-        algorithm,
-        scenario,
-        [config],
-        n_repetitions,
-        search_master_seed + seed_offset,
-        1,
-        criterion=criterion,
-        stage=STAGE_CONFIRMATION,
-        output_root=output_root,
-        **kwargs,
-    )
+    crit = criterion or ConvergenceCriterion()
+    data: dict[str, Any] = {
+        "n_simulations": n_simulations,
+        "n_time_points": n_time_points,
+        "max_cell_seconds": max_cell_seconds,
+    }
+    workers = 1 if algorithm in SERIAL_ALGORITHMS else max(1, min(parallel, MAX_WORKERS))
+    if workers == 1:
+        result = run_stage(
+            algorithm,
+            scenario,
+            [config],
+            n_repetitions,
+            search_master_seed + seed_offset,
+            1,
+            criterion=crit,
+            stage=STAGE_CONFIRMATION,
+            output_root=output_root,
+            progress=progress,
+            **data,
+        )
+    else:
+        result = _confirm_parallel(
+            algorithm,
+            scenario,
+            config,
+            [search_master_seed + seed_offset + k for k in range(n_repetitions)],
+            crit,
+            output_root,
+            workers,
+            data,
+            progress,
+        )
     overlap = result.seeds & {int(s) for s in used_seeds}
     if overlap:
         raise ConvergenceSearchError(
             f"a confirmação repetiu sementes da busca: {sorted(overlap)}; mude seed_offset"
         )
     return result
+
+
+def _confirm_parallel(
+    algorithm: str,
+    scenario: str,
+    config: Candidate,
+    master_seeds: Sequence[int],
+    criterion: ConvergenceCriterion,
+    output_root: Path | str,
+    workers: int,
+    data: Mapping[str, Any],
+    progress: Callable[[str], None] | None,
+) -> StageResult:
+    """Uma repetição por semente mestra, em processos simultâneos (ver :func:`confirm`)."""
+    stage_dir = _stage_dir(output_root, algorithm, scenario, STAGE_CONFIRMATION)
+    designs = [
+        design_for(
+            algorithm,
+            scenario,
+            config,
+            repetitions=1,
+            master_seed=seed,
+            output_root=stage_dir,
+            **data,
+        )
+        for seed in master_seeds
+    ]
+    bs.require_algorithm(algorithm)
+    start = time.perf_counter()
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(workers, mp_context=ctx) as executor:
+        parts = list(executor.map(_run_candidate, designs))
+    report = pd.concat(parts, ignore_index=True)
+    report["repeticao"] = list(range(len(report)))
+    row = summarize(
+        report,
+        config,
+        criterion,
+        stage=STAGE_CONFIRMATION,
+        order=0,
+        algorithm=algorithm,
+        scenario=scenario,
+    )
+    if progress is not None:
+        progress(
+            f"[{STAGE_CONFIRMATION}] {config.label}: {row['n_sucesso']}/{row['n_execucoes']} "
+            f"sucesso; típica {row['expressao_tipica']}; {row['tempo_medio_s']:.1f} s"
+        )
+    table = pd.DataFrame([row], columns=list(TABLE_COLUMNS))
+    reports = {config.label: report}
+    _write_stage_log(stage_dir, STAGE_CONFIRMATION, reports, [config], criterion)
+    _write_stage_table(stage_dir, STAGE_CONFIRMATION, table)
+    return StageResult(
+        stage=STAGE_CONFIRMATION,
+        algorithm=algorithm,
+        scenario=scenario,
+        table=table,
+        reports=reports,
+        candidates=(config,),
+        criterion=criterion,
+        stage_dir=stage_dir,
+        elapsed_seconds=time.perf_counter() - start,
+    )
 
 
 # --------------------------------------------------------------------------- exportação
@@ -987,7 +1100,7 @@ def export_best(
     algorithm: str,
     scenario: str,
     candidate: Candidate,
-    stages: Sequence[StageResult],
+    stages: Sequence[StageResult | pd.DataFrame],
     *,
     criterion: ConvergenceCriterion | None = None,
     confirmation: StageResult | None = None,
@@ -1018,17 +1131,32 @@ def export_best(
     paths["yaml"].write_text(
         yaml.safe_dump(best, allow_unicode=True, sort_keys=False, width=100), "utf-8"
     )
-    tables = [s.table for s in stages]
+    tables = [s if isinstance(s, pd.DataFrame) else s.table for s in stages]
     if confirmation is not None and all(confirmation is not s for s in stages):
         tables.append(confirmation.table)
     frames = [t for t in tables if not t.empty]
     combined = (
-        pd.concat(frames, ignore_index=True)
+        pd.concat(frames, ignore_index=True).drop_duplicates(["etapa", "rotulo", "sementes"])
         if frames
         else pd.DataFrame(columns=list(TABLE_COLUMNS))
     )
     combined.to_csv(paths["table"], index=False)
     return paths
+
+
+def load_stage_table(
+    algorithm: str, scenario: str, stage: str, output_root: Path | str = OUTPUT_ROOT
+) -> pd.DataFrame:
+    """Tabela gravada de uma etapa (``<raiz>/<algoritmo>/<cenário>/<etapa>/search_table.csv``)."""
+    path = _stage_dir(output_root, algorithm, scenario, stage) / SEARCH_TABLE_FILE
+    table: pd.DataFrame = pd.read_csv(path)
+    return table
+
+
+def candidate_from_row(row: Mapping[str, Any], hypothesis: str = "") -> Candidate:
+    """Reconstrói a :class:`Candidate` de uma linha de tabela de etapa (coluna ``config``)."""
+    overrides = json.loads(str(row["config"]))
+    return make_candidate(str(row["rotulo"]), overrides, hypothesis)
 
 
 def load_best_config(path: Path | str) -> tuple[bs.SearchBudget, tuple[tuple[str, Any], ...], str]:
@@ -1172,6 +1300,7 @@ __all__ = [
     "SearchSpace",
     "StageResult",
     "best_config_dict",
+    "candidate_from_row",
     "cheaper_candidates",
     "confirm",
     "deviations_from_base",
@@ -1179,6 +1308,7 @@ __all__ = [
     "export_best",
     "expressiveness_diagnosis",
     "load_best_config",
+    "load_stage_table",
     "loss_blocks_convergence",
     "make_candidate",
     "minimal_mode_requested",
@@ -1190,4 +1320,3 @@ __all__ = [
     "successes",
     "summarize",
 ]
-

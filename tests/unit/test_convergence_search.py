@@ -249,3 +249,30 @@ def test_expressiveness_diagnosis_free_fall_and_loss_blocking() -> None:
     normalized = cs.Candidate("n", {"loss.normalization": "normalized"})
     hm_n = cs.expressiveness_diagnosis("gplearn", "harmonic_motion", normalized, **small)
     assert not cs.loss_blocks_convergence(hm_n)
+
+
+def test_parallel_confirmation_uses_one_new_master_seed_per_repetition(tmp_path: Path) -> None:
+    cand = _cand("c")
+    search = cs.run_stage(
+        "gplearn", "free_fall", [cand], repetitions=2, master_seed=11,
+        criterion=LOOSE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    conf = cs.confirm(
+        "gplearn", "free_fall", cand, n_repetitions=3, seed_offset=500,
+        search_master_seed=11, used_seeds=search.seeds, criterion=LOOSE,
+        output_root=tmp_path, parallel=3, **TINY,
+    )  # fmt: skip
+    report = conf.reports["c"]
+    assert list(report["repeticao"]) == [0, 1, 2]
+    assert len(conf.seeds) == 3 and not (conf.seeds & search.seeds)
+    assert conf.table.iloc[0]["n_execucoes"] == 3 and conf.table.iloc[0]["converge"]
+    assert (conf.stage_dir / cs.STAGE_LOG_FILE).exists()
+    other = _cand("d", **{"sr.gplearn.tournament_size": 5})
+    cs.confirm(
+        "gplearn", "free_fall", other, n_repetitions=1, seed_offset=500,
+        search_master_seed=11, criterion=LOOSE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    table = cs.load_stage_table("gplearn", "free_fall", cs.STAGE_CONFIRMATION, tmp_path)
+    assert set(table["rotulo"]) == {"c", "d"}  # a confirmação acumula candidatas
+    labels = {json.loads(x)["rotulo"] for x in (conf.stage_dir / cs.STAGE_LOG_FILE).open()}
+    assert labels == {"c", "d"}
