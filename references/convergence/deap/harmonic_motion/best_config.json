@@ -1,0 +1,48 @@
+{
+  "algoritmo": "deap",
+  "cenario": "harmonic_motion",
+  "rotulo": "perda normalizada",
+  "hipotese": "",
+  "loss_formulation": "normalized",
+  "search_budget": {
+    "population": 500,
+    "generations": 200,
+    "early_stopping": false,
+    "min_relative_improvement": 0.001,
+    "patience": 3,
+    "max_cell_seconds": 1800.0,
+    "pysr_niterations": 10,
+    "pysr_population_size": 50,
+    "pysr_ncycles_per_iteration": 50
+  },
+  "hyperparameters": {
+    "sr.deap.crossover_prob": 0.7,
+    "sr.deap.mutation_prob": 0.2,
+    "sr.deap.tournament_size": 7
+  },
+  "overrides": {
+    "loss.normalization": "normalized",
+    "sr.deap.crossover_prob": 0.7,
+    "sr.deap.mutation_prob": 0.2,
+    "sr.deap.tournament_size": 7,
+    "sr.early_stopping.enabled": false,
+    "sr.generations": 200,
+    "sr.population": 500
+  },
+  "desvios_do_baseline_literal": [
+    "loss.normalization",
+    "sr.deap.crossover_prob",
+    "sr.deap.mutation_prob",
+    "sr.deap.tournament_size",
+    "sr.early_stopping.enabled",
+    "sr.generations",
+    "sr.population"
+  ],
+  "criterio": {
+    "max_tree_distance": 0.05,
+    "max_one_minus_r2": 0.001,
+    "min_success_fraction": 0.6666666666666666
+  },
+  "confirmada": false,
+  "notebook_05": "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=500, generations=200, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n    'sr.deap.tournament_size': 7\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+}

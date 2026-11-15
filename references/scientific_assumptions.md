@@ -328,3 +328,143 @@ ajustados por Holm são reportados à parte.
 2. **Sem `sqrt` em nenhum conjunto de operadores (GAP-06).** Distância 0 em DEAP e gplearn só é alcançável com a canonicalização `exp(c·log u) → pow(u, c)`. O T-simbolico precisa incluir `pow` na AST.
 3. **Baseline e soma dos pesos (GAP-01).** Com `w3 = 0`, a configuração precisa usar `(0.5, 0.5, 0)` para não violar a validação "soma = 1".
 4. **Custo (GAP-14).** A leitura literal (LLM em todo candidato) contradiz a ordem de grandeza da Tabela 6 (cerca de 24 chamadas por treino). PySR com LLM in-loop é de 1 a 2 ordens de grandeza mais caro que DEAP e gplearn.
+
+---
+
+## Busca de convergência do baseline
+
+**Contexto.** No notebook 05 (Fase 1, regime sem ruído, queda livre, gplearn, população 100 × 50 gerações, parada antecipada
+0,1%/3 gerações) as 3 repetições "não convergiram" (`exp(t)` e combinações com `mass`, paradas em 5, 9 e 15 gerações). Antes da
+inserção do LLM, a busca de configuração foi feita com `physics_llm_sr.workflows.convergence_search` (notebook 06), reutilizando
+`baseline_study` (mesmos dados, métricas e logs). Tabelas completas, por etapa: `references/convergence/<algoritmo>/<cenário>/search_table.csv`;
+configuração vencedora: `best_config.yaml`/`best_config.json` no mesmo diretório; tempos: `references/convergence/timings.jsonl`.
+
+**Reprodução literal × configuração calibrada.** A reprodução literal do artigo (trilha `paper_replication`, `configs/*.yaml`)
+continua usando os valores do artigo e as hipóteses H-01..H-03. Os valores abaixo formam a **configuração calibrada** (desvio
+declarado) usada como baseline antes da inserção do LLM; nunca entram nas tabelas de reprodução literal.
+
+**Critério de convergência** (`ConvergenceCriterion`, visível): repetição bem sucedida quando
+`min(distância estrutural primária, distância equivalente) ≤ 0,05` **e** `1 − R²` (teste limpo) `≤ 1e-3`; a configuração converge
+quando ≥ 2/3 das repetições são bem sucedidas. Triagem e refinamento com 3 repetições (semente mestra 42); confirmação com 5
+repetições em **sementes novas** (sementes mestras 1042..1046, disjuntas das da busca, verificado no código).
+
+**Diagnóstico de expressividade e da perda** (`expressiveness_diagnosis`, perda literal `L = 0,5·e + 0,5·nós`):
+
+| cenário | forma | nós | L (gplearn/DEAP, MSE) | L (PySR, Huber δ=1) |
+| --- | --- | --- | --- | --- |
+| queda livre | `9.81*t` (equivalente) | 3 | 1,50 | 1,50 |
+| queda livre | `sqrt(2*9.81*height)` (referência; sem `sqrt` no GAP-06) | 6 | 3,00 | 3,00 |
+| queda livre | `height` | 1 | 50,35 | 3,37 |
+| queda livre | constante média | 1 | 53,26 | 4,57 |
+| MHS | constante média | 1 | 0,52 | 0,51 |
+| MHS | referência `length*cos(sqrt(10/mass)*t)` | 9 | 4,50 | 4,50 |
+| onda amortecida | constante média | 1 | 0,70 | 0,60 |
+
+Na queda livre a perda literal **não** impede `9.81*t` (é o mínimo). Nos cenários oscilatórios a variância do alvo (0,043 e 0,39)
+é menor que o custo de um nó (0,5): a constante tem `L` menor que a referência, e **nenhuma** busca converge sob a perda literal
+(`loss_blocks_convergence = True`). Isso é consequência da formulação (GAP-02), não do algoritmo.
+
+### gplearn (queda livre)
+
+| configuração | sucesso | `1 − R²` mediano | expressão típica |
+| --- | --- | --- | --- |
+| H-02 + parada antecipada (notebook 05) | 0/3 | — | `exp(t)` (parada em 5–15 gerações) |
+| H1: sem parada antecipada | 0/3 | 0,19 | `height + t - exp(t)` |
+| H1+H2: constantes (−10, 10) | 0/3 | 1,0e-3 | `t * 9.63` (distância 0,058) |
+| H1+H2+H3: torneio 7 | 0/3 | 3,2e-2 | `t * 8.96` |
+| H1–H4: torneio 7, 1000 × 100 | 1/3 | 7,6e-4 | `9.72 * t` |
+| H1–H4: (−10, 10), torneio 20, mutação 0,1, 1000 × 100 | 1/3 | 1,7e-4 | `9.79 * t` |
+| **H1–H4: (0, 20), torneio 20, mutação 0,1, 1000 × 100** | **2/3** | 4,4e-4 | `t * 9.82` |
+| idem + `sqrt` (H5) | 0/3 | 4,3e-3 | `t * 9.50` |
+| refinamento 1000 × 50 | 2/3 → confirmação 3/5 (reprovada) | | |
+| **confirmação 1000 × 100 (sementes novas)** | **4/5** | | `t * 9.82` |
+
+Escolhida (desvios do baseline literal): `sr.early_stopping.enabled = false` (H-01: a parada 0,1%/3 interrompe a busca enquanto a
+melhor perda ainda está num platô; sem elitismo no gplearn a melhoria vem aos saltos); `sr.gplearn.const_range = (0, 20)` (H-03 =
+(−1, 1) não alcança `g = 9,81`; sem otimização de constantes, só sorteios próximos de 9,81 produzem `c·t` com distância ≤ 0,05);
+`sr.gplearn.tournament_size = 20` (default do gplearn; H-02 = 3); `p_crossover = 0,7`, `p_subtree_mutation = 0,1`,
+`p_hoist_mutation = 0,05`, `p_point_mutation = 0,1` (defaults 0,9/0,01/0,01/0,01 quase não renovam constantes);
+`sr.population = 1000`, `sr.generations = 100` (artigo: 100 × 50). Gargalo restante: precisão da constante (sem otimização de
+constantes, `|Δg| ≤ 0,15` depende de sorteio).
+
+### DEAP (queda livre)
+
+| configuração | sucesso | expressão típica |
+| --- | --- | --- |
+| H1: sem parada antecipada (cx 0,05 / mut 0,01 do artigo) | 0/3 | `height / t + height / t` |
+| cx 0,7 / mut 0,2 | 1/3 | `t * 9.67` |
+| cx 0,9 / mut 0,1 | 0/3 | `9.24 * t` |
+| cx 0,7 / mut 0,2, torneio 7, 500 × 100 | 1/3 | `t * 9.66` |
+| idem + `sqrt` (H5) | 3/3 → confirmação 2/5 (reprovada) | `t * 9.80` |
+| cx 0,7 / mut 0,2, torneio 7, 1000 × 200 | 3/3 | `9.80 * t` |
+| paciência 20 (parada antecipada ligada), 500 × 100 | 0/3 | `t * 9.34` |
+| refinamento 1000 × 100 | 3/3 → confirmação 3/5 (reprovada) | |
+| **refinamento 500 × 200 → confirmação (sementes novas)** | **2/3 → 4/5** | `t * 9.81` |
+
+Escolhida (desvios): `sr.early_stopping.enabled = false`; `sr.deap.crossover_prob = 0,7` e `sr.deap.mutation_prob = 0,2` (artigo:
+0,05/0,01; com esses valores ~94% dos indivíduos são cópias e a busca praticamente não explora); `sr.deap.tournament_size = 7`
+(artigo: 3); `sr.population = 500`, `sr.generations = 200`. A constante efêmera do DEAP é `U(−10, 10)` no código
+(`RANDOM_CONSTANT_SCALE`), embora o H-03 desta tabela diga `U(−1, 1)` e cite a chave `sr.deap.ephemeral_range`, que não existe no
+esquema: divergência documentação × código registrada para o dono do esquema (não alterada aqui).
+
+### PySR (queda livre)
+
+Só convergiu com MSE no termo `e` e várias populações. Evidências (3 repetições na busca, 5 na confirmação):
+
+| configuração | sucesso | expressões |
+| --- | --- | --- |
+| orçamento reduzido do notebook 01/05, sem parada antecipada | 0/3 | `height`, `height ** 0.89` |
+| 380 ciclos, 20 iterações | 0/3 | `height`, `height ** 0.89` |
+| orçamento do artigo/H-02 (1 × 100, 380 ciclos, 50 iterações) | 0/3 | `t / 0.10194` (3/3 exatas: `1 − R² ≈ 0`, distância 0,80) |
+| 8 populações × 50, 200 ciclos, 20 iterações | 1/3 | `t * 9.81`, `t / 0.10194` |
+| Huber δ = 10 (380/20 e artigo) | 0/3 | `height * 0.51 + 6.2` |
+| MSE no termo `e`, 380/20 | 0/3 | polinômio em `height` |
+| MSE no termo `e`, orçamento do artigo | 1/3 | `t * 9.81` |
+| **MSE no termo `e`, 8 populações × 50, 200 ciclos, 20 iterações** | **2/3 → confirmação 4/5** | `t * 9.81` (a falha: `t / 0.10194`) |
+
+Leitura: com a perda composta literal (o termo `0,5·nós` dentro da `loss_function`), uma população única fica presa em árvores de
+1–3 nós vizinhas de `height` (`L = 3,37`) mesmo com `9.81*t` em `L = 1,50`; mais populações (diversidade) ajudam. O mesmo
+ocorre com o `PySRRegressor` nativo e uma `loss_function` equivalente fora do adaptador (verificado), logo não é defeito do adaptador. Quando o PySR
+acerta, frequentemente escreve `t / 0.10194` (numericamente idêntico a `9.81*t`), que a canonicalização do GAP-10 não reduz a
+`9.81*t` (`u / c` não vira `u · (1/c)`): a distância fica 0,80 e a repetição conta como fracasso. Na formulação `normalized`, o PySR
+divide o **Huber** por `Var(y)`: `height` passa a ter `L = 0,0439 < 0,050` de `9.81*t` (o diagnóstico acusa `loss_blocks_convergence`),
+logo a perda normalizada com Huber também impede a convergência (com `sr.pysr.loss = mse` a normalização é coerente).
+Escolhida (desvios): `sr.early_stopping.enabled = false`; `sr.pysr.loss = mse` (GAP-05: o artigo usa Huber no PySR; com δ = 1
+e alvo de até 44 m/s, a cauda linear achata a perda e a busca para em `height`; δ = 10 não resolveu); `sr.pysr.populations = 8`
+(H-02 = 1), `population_size = 50`, `ncycles_per_iteration = 200`, `niterations = 20` (artigo/H-02: 1 × 100, 380 ciclos,
+50 iterações; o orçamento reduzido do notebook 01/05 é 1 × 50, 50 ciclos, 10 iterações). Busca do PySR em série; ~5 min por
+execução nesta máquina.
+
+### Cenários oscilatórios (MHS e onda amortecida)
+
+A melhor configuração de cada algoritmo na queda livre, aplicada com 3 repetições, devolve uma **constante** em todas as repetições
+(DEAP, gplearn e PySR: `1 − R² ≈ 1`, distância 1), como o diagnóstico da perda literal prevê. Triagem curta adicional (≤ 45 min por
+cenário × algoritmo) com a perda `normalized` (desvio, trilha `extended_analysis`), `sqrt` e o dobro de gerações: 0/3 em todas;
+DEAP e gplearn incham as árvores (o denominador de `s` é 511 nós) e várias repetições batem no limite de 900 s por execução. PySR
+(uma rodada: perda normalizada + MSE + `sqrt`, 380 ciclos, 20 iterações): 0/3, devolve constantes. Na onda amortecida a formulação
+normalizada do PySR com Huber também é bloqueada pelo diagnóstico (uma trivial vence a referência); com MSE não é.
+Conclusão: com a perda literal os cenários oscilatórios são inalcançáveis por construção; com a perda normalizada atual, o termo de
+tamanho fica fraco demais e a busca não converge no orçamento testado.
+
+### Tempo de parede por etapa (s; execuções em paralelo competindo pela CPU de 12 núcleos)
+
+| algoritmo × cenário | triagem | refinamento | confirmação | aplicação | triagem do cenário |
+| --- | --- | --- | --- | --- | --- |
+| gplearn × queda livre | 1337 | 1195 | 196 + 995 | — | — |
+| DEAP × queda livre | 728 | 900 | 487 + 106 + 204 | — | — |
+| PySR × queda livre | ≈ 4100 + 113 + 1455 + 1138 | — | 1575 | — | — |
+| gplearn × MHS / onda | — | — | — | 918 / 973 | 2740 / 2735 |
+| DEAP × MHS / onda | — | — | — | 310 / 303 | 2721 / 2721 |
+| PySR × MHS / onda | — | — | — | 244 / 192 | 29 / 26 |
+
+Total ≈ 3 h 35 min de parede. Detalhe por etapa em `references/convergence/timings.jsonl`.
+
+### Achados levados ao orquestrador (não alterados aqui)
+
+1. Formas exatamente equivalentes não declaradas: `2*height/t` (DEAP encontrou `height / t + height / t`, exato pois `h = g t²/2`)
+   e `t / 0.10194` (PySR). A métrica secundária só declara `9.81*t`; a canonicalização não trata `u / c` nem `u + u`.
+2. H-03 diz DEAP `U(−1, 1)` com a chave `sr.deap.ephemeral_range`; o adaptador usa `U(−10, 10)` fixo (sem campo no esquema).
+3. PySR `normalized` + Huber: escala incoerente (Huber/Var(y)); proposta: normalizar `e` pelo erro do preditor constante na mesma
+   métrica, ou usar MSE quando `normalized`.
+4. A parada antecipada do artigo (0,1%/3 gerações) é a principal causa da não convergência no notebook 05 (gplearn parou com 5–15
+   gerações); com paciência 20 o DEAP ainda falha (0/3), por isso a configuração calibrada a desliga.

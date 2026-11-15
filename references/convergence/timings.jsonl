@@ -1,0 +1,36 @@
+{"algoritmo": "gplearn", "cenario": "free_fall", "etapa": "diagnostico", "segundos": 0.1}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "diagnostico", "segundos": 0.3}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "triagem", "segundos": 728.0, "convergiu": true}
+{"algoritmo": "gplearn", "cenario": "free_fall", "etapa": "triagem", "segundos": 1337.0, "convergiu": true}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "diagnostico", "segundos": 0.3}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "refinamento", "segundos": 899.8, "escolhida": "H1-H4 cx 0,7 / mut 0,2, torneio 7, 1000x200 | 1000x100"}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "confirmacao", "segundos": 486.9, "convergiu": false}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "confirmacao", "rotulo": "H1-H5 cx 0,7 / mut 0,2, torneio 7, sqrt, 500x100", "segundos": 105.6, "convergiu": false}
+{"algoritmo": "gplearn", "cenario": "free_fall", "etapa": "refinamento", "segundos": 1195.0, "escolhida": "H1-H4 (0,20), torneio 20, mutação pontual 0,1, 1000x100 | 1000x50"}
+{"algoritmo": "deap", "cenario": "free_fall", "etapa": "confirmacao", "rotulo": "H1-H4 cx 0,7 / mut 0,2, torneio 7, 1000x200 | 500x200", "segundos": 203.6, "convergiu": true}
+{"algoritmo": "gplearn", "cenario": "free_fall", "etapa": "confirmacao", "rotulo": "H1-H4 (0,20), torneio 20, mutação pontual 0,1, 1000x100 | 1000x50", "segundos": 195.9, "convergiu": false}
+{"algoritmo": "deap", "cenario": "harmonic_motion", "etapa": "diagnostico", "segundos": 1.0}
+{"algoritmo": "deap", "cenario": "damped_wave", "etapa": "diagnostico", "segundos": 1.0}
+{"algoritmo": "deap", "cenario": "damped_wave", "etapa": "aplicacao", "segundos": 302.8, "convergiu": false}
+{"algoritmo": "deap", "cenario": "harmonic_motion", "etapa": "aplicacao", "segundos": 310.2, "convergiu": false}
+{"algoritmo": "gplearn", "cenario": "free_fall", "etapa": "confirmacao", "rotulo": "H1-H4 (0,20), torneio 20, mutação pontual 0,1, 1000x100", "segundos": 994.9, "convergiu": true}
+{"algoritmo": "gplearn", "cenario": "damped_wave", "etapa": "diagnostico", "segundos": 0.6}
+{"algoritmo": "gplearn", "cenario": "harmonic_motion", "etapa": "diagnostico", "segundos": 0.7}
+{"algoritmo": "gplearn", "cenario": "harmonic_motion", "etapa": "aplicacao", "segundos": 918.2, "convergiu": false}
+{"algoritmo": "gplearn", "cenario": "damped_wave", "etapa": "aplicacao", "segundos": 972.9, "convergiu": false}
+{"algoritmo": "deap", "cenario": "damped_wave", "etapa": "triagem_cenario", "segundos": 2720.5, "convergiu": false}
+{"algoritmo": "deap", "cenario": "harmonic_motion", "etapa": "triagem_cenario", "segundos": 2720.6, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "triagem", "segundos": null, "nota": "candidata 5 (8 populações + sqrt) interrompida por tempo após 1 repetição (sucesso, t*9.81, 860 s); tabela regravada das 4 primeiras"}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "triagem_extra_normalizada", "segundos": 113, "convergiu": false, "nota": "perda normalizada + orçamento reduzido: 0/3, expressão típica 12.93 (constante); diagnóstico: na formulação normalized do PySR (Huber/Var(y)) height tem L=0.0439 < 9.81*t L=0.05; interrompida (candidata 8x50 normalizada não executada)"}
+{"algoritmo": "gplearn", "cenario": "harmonic_motion", "etapa": "triagem_cenario", "segundos": 2739.8, "convergiu": false}
+{"algoritmo": "gplearn", "cenario": "damped_wave", "etapa": "triagem_cenario", "segundos": 2735.0, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "triagem_extra", "segundos": 1454.5, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "triagem_extra2", "segundos": 1137.8, "convergiu": true}
+{"algoritmo": "pysr", "cenario": "free_fall", "etapa": "confirmacao", "segundos": 1575.2, "rotulo": "MSE no termo e, 8 populações x 50, 200 ciclos, 20 it.", "convergiu": true}
+{"algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "diagnostico", "segundos": 0.3}
+{"algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "diagnostico", "segundos": 0.4}
+{"algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "aplicacao", "segundos": 244.4, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "harmonic_motion", "etapa": "triagem_cenario", "segundos": 29.0, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "diagnostico", "segundos": 0.5}
+{"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "aplicacao", "segundos": 192.1, "convergiu": false}
+{"algoritmo": "pysr", "cenario": "damped_wave", "etapa": "triagem_cenario", "segundos": 25.8, "convergiu": false}

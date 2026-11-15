@@ -1,0 +1,54 @@
+{
+  "algoritmo": "pysr",
+  "cenario": "free_fall",
+  "rotulo": "MSE no termo e, 8 populações x 50, 200 ciclos, 20 it.",
+  "hipotese": "GAP-05 + H4",
+  "loss_formulation": "literal",
+  "search_budget": {
+    "population": 100,
+    "generations": 50,
+    "early_stopping": false,
+    "min_relative_improvement": 0.001,
+    "patience": 3,
+    "max_cell_seconds": 1800.0,
+    "pysr_niterations": 20,
+    "pysr_population_size": 50,
+    "pysr_ncycles_per_iteration": 200
+  },
+  "hyperparameters": {
+    "sr.pysr.populations": 8,
+    "sr.pysr.loss": "mse"
+  },
+  "overrides": {
+    "sr.early_stopping.enabled": false,
+    "sr.pysr.populations": 8,
+    "sr.pysr.population_size": 50,
+    "sr.pysr.ncycles_per_iteration": 200,
+    "sr.pysr.niterations": 20,
+    "sr.pysr.loss": "mse"
+  },
+  "desvios_do_baseline_literal": [
+    "sr.early_stopping.enabled",
+    "sr.pysr.populations",
+    "sr.pysr.population_size",
+    "sr.pysr.ncycles_per_iteration",
+    "sr.pysr.niterations",
+    "sr.pysr.loss"
+  ],
+  "criterio": {
+    "max_tree_distance": 0.05,
+    "max_one_minus_r2": 0.001,
+    "min_success_fraction": 0.6666666666666666
+  },
+  "confirmada": true,
+  "confirmacao": {
+    "converge": true,
+    "n_sucesso": 4,
+    "n_execucoes": 5,
+    "taxa_sucesso": 0.8,
+    "expressao_tipica": "t * 9.810000000068541",
+    "tempo_medio_s": 314.9958977069997,
+    "sementes": "2253012415,3802269363,2404539479,129837356,764478302"
+  },
+  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'literal'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=20, pysr_population_size=50, pysr_ncycles_per_iteration=200)\nHIPERPARAMETROS = {\n    'sr.pysr.populations': 8,\n    'sr.pysr.loss': 'mse'\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+}
