@@ -69,7 +69,11 @@ def test_structural_primary_and_equivalent_min() -> None:
     assert exact_recovery(out["tree_distance_equivalent_min"])
     assert not exact_recovery(out["tree_distance"])
     same = structural_metrics(gt, gt)
-    assert same == {"tree_distance": 0.0, "tree_distance_equivalent_min": 0.0}
+    assert same == {
+        "tree_distance": 0.0,
+        "tree_distance_equivalent_min": 0.0,
+        "tree_distance_algebraic": 0.0,
+    }
 
 
 def test_exact_recovery_rejects_invalid() -> None:

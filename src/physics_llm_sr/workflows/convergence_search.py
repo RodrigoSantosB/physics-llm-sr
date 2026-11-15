@@ -22,7 +22,8 @@ Etapas:
    ``SearchBudget``/``hyperparameters`` do notebook 05) e ``search_table.csv``.
 
 Critério de convergência (:class:`ConvergenceCriterion`, limiares visíveis): uma repetição é bem
-sucedida quando ``min(distância estrutural primária, distância equivalente) ≤ 0,05`` **e**
+sucedida quando ``min(distância estrutural primária, distância equivalente, distância algébrica)
+≤ 0,05`` **e**
 ``1 − R²`` (teste limpo) ``≤ 1e-3``; a configuração converge quando a fração de repetições bem
 sucedidas é ``≥ 2/3``.
 
@@ -127,6 +128,8 @@ TABLE_COLUMNS: tuple[str, ...] = (
     "min_distancia_estrutural",
     "mediana_distancia_equivalente",
     "min_distancia_equivalente",
+    "mediana_distancia_algebrica",
+    "min_distancia_algebrica",
     "mediana_distancia_min",
     "geracoes_media",
     "tempo_medio_s",
@@ -157,16 +160,20 @@ class ConvergenceCriterion:
     """Critério de convergência do baseline (limiares visíveis, nenhuma tolerância escondida).
 
     - ``max_tree_distance``: limiar para ``min(distância estrutural primária, distância mínima a
-      formas equivalentes)``; 0 = mesma estrutura (GAP-11). 0,05 tolera constantes próximas
-      (α = 1: ``|Δc| ≤ 0,15`` numa árvore de 3 nós).
+      formas equivalentes, distância algébrica)``; 0 = mesma estrutura (GAP-11). 0,05 tolera
+      constantes próximas (α = 1: ``|Δc| ≤ 0,15`` numa árvore de 3 nós).
     - ``max_one_minus_r2``: limiar de ``1 − R²`` no teste limpo.
     - ``min_success_fraction``: fração mínima de repetições bem sucedidas para a configuração
       convergir.
+    - ``use_algebraic``: inclui a distância algébrica (secundária; identidades exatas, GAP-10
+      "Distância algébrica") no mínimo. ``False`` reproduz o critério das rodadas O14/O15. A
+      métrica primária continua reportada à parte e é a da comparação com o artigo.
     """
 
     max_tree_distance: float = 0.05
     max_one_minus_r2: float = 1e-3
     min_success_fraction: float = 2.0 / 3.0
+    use_algebraic: bool = True
 
     def __post_init__(self) -> None:
         """Valida os limiares."""
@@ -176,13 +183,19 @@ class ConvergenceCriterion:
             raise ConvergenceSearchError("min_success_fraction deve estar em (0, 1]")
 
     def repetition_succeeds(
-        self, one_minus_r2: float, tree_distance: float, equivalent_distance: float
+        self,
+        one_minus_r2: float,
+        tree_distance: float,
+        equivalent_distance: float,
+        algebraic_distance: float = math.nan,
     ) -> bool:
         """Uma repetição é bem sucedida? (métricas não finitas = fracasso)."""
-        distances = [d for d in (tree_distance, equivalent_distance) if math.isfinite(d)]
-        if not distances or not math.isfinite(one_minus_r2):
+        distance = bs.structure_distance(
+            tree_distance, equivalent_distance, algebraic_distance, self.use_algebraic
+        )
+        if not math.isfinite(distance) or not math.isfinite(one_minus_r2):
             return False
-        return min(distances) <= self.max_tree_distance and one_minus_r2 <= self.max_one_minus_r2
+        return distance <= self.max_tree_distance and one_minus_r2 <= self.max_one_minus_r2
 
     def converges(self, n_success: int, n_runs: int) -> bool:
         """Diz se a configuração converge (``n_success / n_runs ≥ min_success_fraction``)."""
@@ -603,6 +616,7 @@ def successes(report: pd.DataFrame, criterion: ConvergenceCriterion) -> list[boo
             _num(row["um_menos_r2_teste"]),
             _num(row["distancia_estrutural"]),
             _num(row["distancia_equivalente_min"]),
+            _num(row.get("distancia_algebrica")),
         )
         if row["status_execucao"] == "ok"
         else False
@@ -626,7 +640,11 @@ def summarize(
     n = len(report)
     dist = [_num(v) for v in report["distancia_estrutural"]]
     eq = [_num(v) for v in report["distancia_equivalente_min"]]
-    dmin = [_min([a, b]) for a, b in zip(dist, eq, strict=True)]
+    alg = [_num(v) for v in report.get("distancia_algebrica", pd.Series([math.nan] * n))]
+    dmin = [
+        bs.structure_distance(a, b, c, criterion.use_algebraic)
+        for a, b, c in zip(dist, eq, alg, strict=True)
+    ]
     expressions = [str(e) for e in report["equacao_descoberta"] if e is not None and not pd.isna(e)]
     typical = Counter(expressions).most_common(1)[0][0] if expressions else ""
     if expressions and Counter(expressions).most_common(1)[0][1] == 1:
@@ -648,6 +666,8 @@ def summarize(
         "min_distancia_estrutural": _min(dist),
         "mediana_distancia_equivalente": _median(eq),
         "min_distancia_equivalente": _min(eq),
+        "mediana_distancia_algebrica": _median(alg),
+        "min_distancia_algebrica": _min(alg),
         "mediana_distancia_min": _median(dmin),
         "geracoes_media": float(np.nanmean(report["geracoes"].astype(float))) if n else math.nan,
         "tempo_medio_s": float(np.nanmean(report["tempo_s"].astype(float))) if n else math.nan,

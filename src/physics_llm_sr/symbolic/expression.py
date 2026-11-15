@@ -188,6 +188,62 @@ def evaluate(
     return _eval(expr)
 
 
+def protected_points(
+    expr: Expr,
+    X: np.ndarray[Any, Any],  # noqa: N803 - nome do contrato (PRD)
+    feature_names: Sequence[str],
+    params: ProtectionParams = DEFAULT_PROTECTION,
+) -> np.ndarray[Any, np.dtype[np.bool_]]:
+    """Máscara ``(n,)`` dos pontos em que algum operador protegido ativa a proteção.
+
+    Ativa quando, em algum nó: ``div`` com ``|den| < division_epsilon``; ``log`` com
+    ``|x| < log_epsilon``; ``exp`` com ``|x| > exp_clip``; ``pow`` com resultado não finito ou
+    ``|resultado| > power_clip``; ou qualquer resultado intermediário não finito (saneado). Nesses
+    pontos a avaliação protegida difere da função matemática. Os valores intermediários são os
+    mesmos de :func:`evaluate`.
+    """
+    data = np.asarray(X, dtype=np.float64)
+    if data.ndim != 2 or data.shape[1] != len(feature_names):
+        raise ExpressionError(
+            f"X com forma {data.shape} incompatível com {len(feature_names)} feature(s)"
+        )
+    index = {name: i for i, name in enumerate(feature_names)}
+    n = data.shape[0]
+
+    def _rec(node: Expr) -> tuple[FloatArray, np.ndarray[Any, np.dtype[np.bool_]]]:
+        if isinstance(node, Const):
+            return np.full(n, node.value, dtype=np.float64), np.zeros(n, dtype=bool)
+        if isinstance(node, Var):
+            if node.name not in index:
+                raise ExpressionError(f"variável {node.name!r} ausente em feature_names")
+            return data[:, index[node.name]].copy(), np.zeros(n, dtype=bool)
+        if not isinstance(node, Op):
+            raise ExpressionError(f"nó desconhecido: {node!r}")
+        parts = [_rec(c) for c in node.children]
+        args = [v for v, _ in parts]
+        active = np.zeros(n, dtype=bool)
+        for _, child_mask in parts:
+            active = active | child_mask
+        spec = OPERATORS[node.name]
+        with np.errstate(all="ignore"):
+            raw = np.asarray(spec.func(params, *args), dtype=np.float64)
+            if node.name == "div":
+                active = active | (np.abs(args[1]) < params.division_epsilon)
+            elif node.name == "log":
+                active = active | (np.abs(args[0]) < params.log_epsilon)
+            elif node.name == "exp":
+                active = active | (np.abs(args[0]) > params.exp_clip)
+            elif node.name == "pow":
+                base, expo = args
+                integer = np.isfinite(expo) & (expo == np.round(expo))
+                exact = np.power(np.where(integer, base, np.abs(base)), expo)
+                active = active | ~np.isfinite(exact) | (np.abs(exact) > params.power_clip)
+        active = active | ~np.isfinite(raw)
+        return apply_operator(node.name, *args, params=params), active
+
+    return _rec(expr)[1]
+
+
 # --------------------------------------------------------------------------- prefixa
 
 
