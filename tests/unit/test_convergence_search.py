@@ -297,3 +297,18 @@ def test_confirm_cheapest_walks_converged_configurations_by_cost(tmp_path: Path)
     )  # fmt: skip
     assert [t.candidates[0].label for t in tried] == ["barata", "cara"]
     assert not conf.table.iloc[0]["converge"]
+
+
+def test_candidate_from_row_preserves_design_hash(tmp_path: Path) -> None:
+    cand = cs.make_candidate(
+        "ordem",
+        {**TINY_BUDGET, "sr.gplearn.tournament_size": 7, "sr.gplearn.const_range": (0.0, 20.0)},
+    )
+    stage = cs.run_stage(
+        "gplearn", "free_fall", [cand], repetitions=1, master_seed=9,
+        criterion=LOOSE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    rebuilt = cs.candidate_from_row(stage.table.iloc[0])
+    args: dict[str, Any] = {"repetitions": 1, "master_seed": 9, "output_root": tmp_path}
+    same = cs.design_for("gplearn", "free_fall", rebuilt, **args, **TINY).design_hash()
+    assert same == cs.design_for("gplearn", "free_fall", cand, **args, **TINY).design_hash()

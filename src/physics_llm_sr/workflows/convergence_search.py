@@ -651,7 +651,7 @@ def summarize(
         "expressoes": " | ".join(expressions),
         "sementes": ",".join(str(int(s)) for s in report["semente_busca"]),
         "desvios": ",".join(candidate.deviations),
-        "config": json.dumps(candidate.as_dict()["overrides"], ensure_ascii=False, sort_keys=True),
+        "config": json.dumps(candidate.as_dict()["overrides"], ensure_ascii=False),
     }
 
 
