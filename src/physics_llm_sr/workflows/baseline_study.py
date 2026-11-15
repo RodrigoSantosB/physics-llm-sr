@@ -44,13 +44,17 @@ from physics_llm_sr.config.loader import load_config, parse_config
 from physics_llm_sr.config.paths import PROJECT_ROOT_ENV, project_root, resolve_project_path
 from physics_llm_sr.config.schemas import ExperimentConfig
 from physics_llm_sr.core_types import Dataset
-from physics_llm_sr.evaluation.metrics import regression_metrics, structural_metrics
+from physics_llm_sr.evaluation.metrics import (
+    regression_metrics,
+    structural_metrics,
+    tree_distance_algebraic,
+)
 from physics_llm_sr.experiments.data_provider import DataProvider
 from physics_llm_sr.experiments.reporting import consolidate
 from physics_llm_sr.experiments.runner import RunSummary, run_experiments
 from physics_llm_sr.physics.registry import get_scenario
 from physics_llm_sr.reproducibility.seeds import derive_rng
-from physics_llm_sr.symbolic.expression import evaluate, parse_infix
+from physics_llm_sr.symbolic.expression import evaluate, parse_infix, protected_points
 from physics_llm_sr.symbolic.operators import ProtectionParams
 from physics_llm_sr.symbolic.tree_distance import TreeDistanceParams
 
@@ -117,6 +121,7 @@ CONSISTENCY_COLUMNS: tuple[str, ...] = (
     "erro_max_abs_grid",
     "distancia_estrutural",
     "distancia_equivalente_min",
+    "distancia_algebrica",
     "recuperacao_exata",
     "geracoes",
     "motivo_parada",
@@ -244,12 +249,17 @@ class ConsistencyCriteria:
     """Critério de consistência (limiares visíveis; nenhuma tolerância escondida).
 
     - ``max_one_minus_r2``: ajuste numérico aceito quando ``1 − R²`` (teste limpo) ≤ limiar.
-    - ``max_tree_distance``: estrutura recuperada quando a distância estrutural primária à
-      equação de referência ≤ limiar (0 = mesma estrutura, GAP-11).
+    - ``max_tree_distance``: estrutura recuperada quando ``min(distância primária, distância
+      equivalente, distância algébrica)`` ≤ limiar (0 = mesma estrutura, GAP-11).
+    - ``use_algebraic``: inclui a distância algébrica (secundária, identidades exatas; GAP-10,
+      "Distância algébrica") no mínimo. ``False`` reproduz o critério anterior (primária e
+      equivalente). A métrica primária continua reportada à parte e é a usada na comparação com
+      as tabelas do artigo.
     """
 
     max_one_minus_r2: float = 1e-4
     max_tree_distance: float = 0.0
+    use_algebraic: bool = True
 
     def __post_init__(self) -> None:
         """Valida os limiares (não negativos)."""
@@ -577,17 +587,44 @@ def dense_grid(cfg: ExperimentConfig, scenario_name: str) -> tuple[np.ndarray, n
 
 
 def _max_abs_grid_error(
-    expression: str, cfg: ExperimentConfig, scenario_name: str, grid: tuple[np.ndarray, np.ndarray]
+    expression: str,
+    cfg: ExperimentConfig,
+    scenario_name: str,
+    grid: tuple[np.ndarray, np.ndarray],
+    mask_protected: bool = False,
 ) -> float:
+    """Erro máximo absoluto no grid denso.
+
+    ``mask_protected`` (só para formas equivalentes DECLARADAS no controle positivo) ignora os
+    pontos em que algum operador protegido ativa a proteção (:func:`protected_points`).
+    """
+    return _grid_error_and_masked(expression, cfg, scenario_name, grid, mask_protected)[0]
+
+
+def _grid_error_and_masked(
+    expression: str,
+    cfg: ExperimentConfig,
+    scenario_name: str,
+    grid: tuple[np.ndarray, np.ndarray],
+    mask_protected: bool,
+) -> tuple[float, int]:
     scenario = get_scenario(scenario_name, cfg.physics)
     try:
-        yhat = evaluate(parse_infix(expression), grid[0], scenario.feature_names, _protection(cfg))
-        return float(np.max(np.abs(yhat - grid[1])))
+        expr = parse_infix(expression)
+        yhat = evaluate(expr, grid[0], scenario.feature_names, _protection(cfg))
+        keep = np.ones(len(yhat), dtype=bool)
+        if mask_protected:
+            keep = ~protected_points(expr, grid[0], scenario.feature_names, _protection(cfg))
+        if not keep.any():
+            return math.nan, int((~keep).sum())
+        return float(np.max(np.abs(yhat[keep] - grid[1][keep]))), int((~keep).sum())
     except Exception:  # expressão inválida/não avaliável: sem erro numérico definido
-        return math.nan
+        return math.nan, 0
 
 
-def positive_control(scenario: str, design: StudyDesign | None = None) -> pd.DataFrame:
+def positive_control(
+    scenario: str, design: StudyDesign | None = None, extra_forms: Sequence[str] = ()
+) -> pd.DataFrame:
     """Avalia a equação de referência (e formas equivalentes) nos dados limpos: controle positivo.
 
     Usa o mesmo caminho de métricas do baseline (``regression_metrics``,
@@ -595,6 +632,13 @@ def positive_control(scenario: str, design: StudyDesign | None = None) -> pd.Dat
     :data:`POSITIVE_CONTROL_TOLERANCE` (erro de ponto flutuante). Uma linha por forma; a primeira
     (``forma_primaria``) é a equação de referência do artigo. Se falhar, o problema está nos dados
     ou nas métricas, não no algoritmo.
+
+    A forma primária é avaliada em TODOS os pontos. As formas equivalentes declaradas (e
+    ``extra_forms``, formas adicionais de diagnóstico tratadas como equivalentes) ignoram os pontos
+    em que algum operador protegido ativa a proteção (:func:`protected_points`; ex.: ``2*height/t``
+    com ``|t| < division_epsilon``, onde a divisão protegida devolve ``division_fallback`` em vez
+    do limite): são identidades da função matemática, não da semântica protegida. Quantos pontos
+    foram ignorados fica em ``pontos_protegidos`` (dados) e ``pontos_protegidos_grid`` (grid).
     """
     design = design or StudyDesign(algorithm="gplearn", scenarios=(scenario,))
     cfg = build_config(design)
@@ -602,16 +646,22 @@ def positive_control(scenario: str, design: StudyDesign | None = None) -> pd.Dat
     data: Dataset = provider.clean(scenario, 0)
     clean = bool(np.array_equal(data.y_observed, data.y_true))
     sc = get_scenario(scenario, cfg.physics)
-    forms = sc.equivalent_ground_truths()
-    gt = parse_infix(forms[0])
-    equivalents = [parse_infix(f) for f in forms[1:]]
+    declared = sc.equivalent_ground_truths()
+    forms = (*declared, *extra_forms)
+    gt = parse_infix(declared[0])
+    equivalents = [parse_infix(f) for f in declared[1:]]
     params = TreeDistanceParams.from_config(cfg.symbolic)
     grid = dense_grid(cfg, scenario)
     rows = []
     for index, form in enumerate(forms):
         expr = parse_infix(form)
         yhat = evaluate(expr, data.X, data.feature_names, _protection(cfg))
-        reg = regression_metrics(data.y_observed, yhat)
+        mask_protected = index > 0
+        keep = np.ones(len(yhat), dtype=bool)
+        if mask_protected:
+            keep = ~protected_points(expr, data.X, data.feature_names, _protection(cfg))
+        reg = regression_metrics(data.y_observed[keep], yhat[keep])
+        grid_error, grid_masked = _grid_error_and_masked(form, cfg, scenario, grid, mask_protected)
         struct = structural_metrics(expr, gt, equivalents, params)
         fits = reg["one_minus_r2"] <= POSITIVE_CONTROL_TOLERANCE
         same = struct["tree_distance_equivalent_min"] == 0.0
@@ -624,9 +674,12 @@ def positive_control(scenario: str, design: StudyDesign | None = None) -> pd.Dat
                 "mae": reg["mae"],
                 "mse": reg["mse"],
                 "um_menos_r2": reg["one_minus_r2"],
-                "erro_max_abs_grid": _max_abs_grid_error(form, cfg, scenario, grid),
+                "erro_max_abs_grid": grid_error,
+                "pontos_protegidos": int((~keep).sum()),
+                "pontos_protegidos_grid": grid_masked,
                 "distancia_estrutural": struct["tree_distance"],
                 "distancia_equivalente_min": struct["tree_distance_equivalent_min"],
+                "distancia_algebrica": struct["tree_distance_algebraic"],
                 "dados_limpos": clean,
                 "aprovado": bool(fits and same and primary_ok and clean),
             }
@@ -638,13 +691,35 @@ def positive_control(scenario: str, design: StudyDesign | None = None) -> pd.Dat
 # --------------------------------------------------------------------------- consistência
 
 
+def structure_distance(
+    tree_distance: float,
+    equivalent_distance: float = math.nan,
+    algebraic_distance: float = math.nan,
+    use_algebraic: bool = True,
+) -> float:
+    """``min`` das distâncias finitas (primária, equivalente e, se ``use_algebraic``, algébrica).
+
+    Devolve ``nan`` se nenhuma é finita.
+    """
+    candidates = [tree_distance, equivalent_distance]
+    if use_algebraic:
+        candidates.append(algebraic_distance)
+    finite = [d for d in candidates if math.isfinite(d)]
+    return min(finite) if finite else math.nan
+
+
 def classify(
     one_minus_r2: float,
     tree_distance: float,
     criteria: ConsistencyCriteria,
     status: str = "ok",
+    equivalent_distance: float = math.nan,
+    algebraic_distance: float = math.nan,
 ) -> str:
     """Classifica uma repetição pelos limiares visíveis de ``criteria``.
+
+    A distância comparada ao limiar é :func:`structure_distance` (mínimo entre primária,
+    equivalente e, com ``criteria.use_algebraic``, algébrica; ausentes = ``nan``).
 
     - :data:`CLASS_RECOVERS`: ``1 − R²`` ≤ limiar de ajuste **e** distância ≤ limiar de estrutura;
     - :data:`CLASS_FITS`: ajuste dentro do limiar, mas estrutura acima do limiar;
@@ -655,7 +730,10 @@ def classify(
         return CLASS_ERROR
     if not math.isfinite(one_minus_r2) or one_minus_r2 > criteria.max_one_minus_r2:
         return CLASS_FAILS
-    if math.isfinite(tree_distance) and tree_distance <= criteria.max_tree_distance:
+    distance = structure_distance(
+        tree_distance, equivalent_distance, algebraic_distance, criteria.use_algebraic
+    )
+    if math.isfinite(distance) and distance <= criteria.max_tree_distance:
         return CLASS_RECOVERS
     return CLASS_FITS
 
@@ -663,6 +741,23 @@ def classify(
 def _num(row: Mapping[Any, Any], key: str) -> float:
     value = row.get(key)
     return math.nan if value is None or pd.isna(value) else float(value)
+
+
+def _algebraic_distance(
+    record: Mapping[Any, Any], expression: str | None, cfg: ExperimentConfig, scenario: str
+) -> float:
+    """``tree_distance_algebraic`` do registro; recalculada se o parquet é antigo (sem a coluna)."""
+    if "tree_distance_algebraic" in record:
+        return _num(record, "tree_distance_algebraic")
+    if expression is None:
+        return math.nan
+    try:
+        declared = get_scenario(scenario, cfg.physics).equivalent_ground_truths()
+        forms = [parse_infix(f) for f in declared]
+        params = TreeDistanceParams.from_config(cfg.symbolic)
+        return tree_distance_algebraic(parse_infix(expression), forms[0], forms[1:], params)
+    except Exception:  # expressão inválida/não analisável: sem distância definida
+        return math.nan
 
 
 def _report_rows(run: ExecutedRun, criteria: ConsistencyCriteria) -> list[dict[str, Any]]:
@@ -684,6 +779,8 @@ def _report_rows(run: ExecutedRun, criteria: ConsistencyCriteria) -> list[dict[s
         )
         r2 = _num(record, "test_true_one_minus_r2")
         dist = _num(record, "tree_distance")
+        eq_dist = _num(record, "tree_distance_equivalent_min")
+        alg_dist = _algebraic_distance(record, expression, cfg, scenario)
         exact = record.get("exact_recovery")
         rows.append(
             {
@@ -703,13 +800,14 @@ def _report_rows(run: ExecutedRun, criteria: ConsistencyCriteria) -> list[dict[s
                 "um_menos_r2_teste": r2,
                 "erro_max_abs_grid": grid_error,
                 "distancia_estrutural": dist,
-                "distancia_equivalente_min": _num(record, "tree_distance_equivalent_min"),
+                "distancia_equivalente_min": eq_dist,
+                "distancia_algebrica": alg_dist,
                 "recuperacao_exata": None if exact is None or pd.isna(exact) else bool(exact),
                 "geracoes": _num(record, "n_generations"),
                 "motivo_parada": record.get("stop_reason"),
                 "tempo_s": _num(record, "cell_seconds"),
                 "status_execucao": status,
-                "classificacao": classify(r2, dist, criteria, status),
+                "classificacao": classify(r2, dist, criteria, status, eq_dist, alg_dist),
                 "hash_desenho": design_hash,
             }
         )

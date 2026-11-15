@@ -199,6 +199,46 @@ Propriedades que os testes T:tree-distance e T:tree-distance-neg devem verificar
 
 Observação sobre TD-18: `v = g·t` é exata nos dados da queda livre (GAP-03), mas tem distância máxima para a GT.
 
+#### Distância algébrica (métrica secundária, rodada O16)
+
+- **Rótulo:** `tree_distance_algebraic` (coluna de `results.parquet`; `distancia_algebrica` no relatório de consistência). É
+  **secundária**: a métrica primária (`tree_distance`, definição acima, com a canonicalização mínima e os exemplos TD-01..TD-18
+  inalterados) continua reportada à parte e é **a única usada na comparação com as tabelas do artigo**.
+- **Definição:** `min` sobre {GT do artigo + formas equivalentes declaradas pelo cenário} de
+  `d(ANF(encontrada), ANF(alvo))`, com a mesma distância e os mesmos parâmetros (α = 1, descida em operadores diferentes).
+  `ANF = algebraic_normal_form` (`symbolic/canonicalization.py`), separada de `structural_normal_form`.
+- **Forma normal algébrica:** a expressão é lida como soma de monômios `coef · Π fatorᵏ` (fatores: variáveis, `exp`, `log`,
+  `sin`, `cos`, `pow` com expoente não inteiro ou não constante, e somas usadas como fator) e reconstruída em ordem canônica
+  (termos e fatores pela chave prefixa; termo constante por último; coeficiente à esquerda; denominadores num único `div`).
+  Aplica-se até o ponto fixo (no máximo 8 passadas); se um coeficiente fica não finito ou a forma passa de
+  `4·nós + 8`, devolve-se a forma estrutural (sem reescrita). Identidades, todas exatas na matemática real (domínio entre
+  parênteses):
+  - dobra de constantes, inclusive dentro de funções (semântica protegida, idêntica);
+  - `u + 0`, `u·1`, `1.0·u → u`; `u·0 → 0`; `u − u → 0`; `u + u → 2u`; `−(−u) → u`; `c1·(c2·u) → (c1c2)·u`; `(−u)·c → (−c)·u`;
+  - `u / c → (1/c)·u` (`|c| ≥ division_epsilon`; abaixo disso a divisão protegida devolve a constante de fallback e a forma
+    também);
+  - constantes distribuem sobre somas: `c·(u − v) → c·u − c·v` (só constantes; `x·(a − b)` com `x` não constante fica
+    fatorado); soma usada como fator tem o coeficiente do termo líder extraído (`(2a + 2b)·x → 2·(a + b)·x`);
+  - `u / v` com `v` monômio → `u·v⁻¹`; `u·u → u²`; `u·v/u → v` (`|den| ≥ division_epsilon`);
+  - `u / exp(v) → u·exp(−v)`; `exp(a)·exp(b) → exp(a + b)` (`|a|, |b|, |a + b| ≤ exp_clip`);
+  - `cos(−x) = cos(x)`, `log|−x| = log|x|`, `sin(−x) = −sin(x)`: o argumento fica com o termo líder positivo, logo
+    `cos(a − b)` e `cos(b − a)` coincidem;
+  - `sqrt(u) → pow(u, 0.5)`; `(c·u)ᵏ → cᵏ·uᵏ` (k inteiro); `pow(c·M, e) → |c|ᵉ·pow(M, e)` e `pow(uᵏ, e) → pow(u, k·e)` se
+    `k·e` não é inteiro (o `pow` protegido usa `|base|` com expoente não inteiro); `exp(c·log u) → pow(u, c)` só para `c` não
+    inteiro (`|u|ᶜ`); resultados com `|valor| ≤ power_clip`.
+- **Verificação:** teste de propriedade com 600 árvores aleatórias (gerador `random_expression`, profundidade 4, pontos em
+  `[−3, 3]⁵`): `evaluate(ANF(e)) ≈ evaluate(e)` com tolerância relativa `1e-6` sobre a maior magnitude intermediária no ponto
+  (absorve o arredondamento de reordenar somas), ignorando os pontos em que algum operador protegido ativa (os domínios acima);
+  idempotência `ANF(ANF(e)) = ANF(e)`. Fora do domínio de validade a avaliação protegida pode diferir: por isso a distância
+  algébrica é secundária e não entra nas tabelas de reprodução.
+- **Casos reais:** `height/t + height/t` × `2*height/t` → 0; `t/0.1019367991845056` × `9.81*t` → 0 (≤ 1e-12, só arredondamento
+  de `1/g`); DEAP na onda `cos(6.299*(t − length))/exp(0.4965*damping*t)` × referência → `(2·|6.299 − 2π| + |0.4965 − 0.5|)/15 =
+  0,0023` (a árvore crua do DEAP, com `−4.218·log(−4.452)` e `0.7046²`, dá 0,0024), contra 0,875 na primária; `cos(length)` ×
+  referência dá 1,0.
+- **Critério de convergência / classificação:** `ConvergenceCriterion` e `classify` usam `min(primária, equivalente, algébrica)`
+  com `use_algebraic = True` (padrão); `use_algebraic = False` reproduz o critério das rodadas O14/O15.
+- **Status:** hipótese (métrica auxiliar; não altera a definição normativa).
+
 ### GAP-11 — Distância 0 vs 1 como equivalência
 
 - **Questão:** A equivalência estrutural corresponde a distância 0 ou 1?
@@ -523,6 +563,34 @@ registro por etapa (`rodada = o15`, com etapas abortadas e motivo) em `reference
 `tests/scientific/test_physics_gt.py`): `2*height/t` (o DEAP achou `height/t + height/t`) e `t/0.1019367991845056` (`repr(1/g)`,
 forma usual do PySR). A divisão protegida (|t| < 0,001 → 1) só altera essas formas em t ∈ (0; 0,001), instantes excluídos da
 comparação no teste.
+
+### Rodada O16: reavaliação offline com a distância algébrica (sem retreinar)
+
+Script `references/convergence/reavaliacao_algebrica.py` (lê, sem alterar, os `results.parquet` das rodadas O14/O15 e, onde não
+há parquet, as expressões de `search_table.csv` com `1 − R²` no grid denso limpo, `fonte_r2 = grid`); saída por repetição em
+`references/convergence/reavaliacao_algebrica.csv` (distâncias primária, equivalente e algébrica recalculadas com o código atual
+e as formas declaradas hoje; classificação `antiga` = `use_algebraic=False`, `nova` = `use_algebraic=True`; mesmo critério:
+distância ≤ 0,05, `1 − R² ≤ 1e-3`, ≥ 2/3 das repetições).
+
+| algoritmo × cenário | repetições bem sucedidas (antiga → nova) | alguma configuração converge (antiga → nova) |
+| --- | --- | --- |
+| DEAP × queda livre | 29 → 44 de 56 | sim → sim (+7 configurações, inclusive a confirmação `H1-H5 … sqrt, 500x100`: 2/5 → 5/5) |
+| gplearn × queda livre | 15 → 21 de 50 | sim → sim (+4 configurações de triagem/refinamento) |
+| PySR × queda livre | 16 → 17 de 32 | sim → sim (nenhuma configuração nova) |
+| DEAP × onda amortecida | 0 → 1 de 24 | não → não (melhor: 1/3 em `w=0.99, prof. 8, 500x200`; distância algébrica 0,0024, `1 − R² = 4,5e-5`; as outras duas repetições têm `1 − R²` 0,20 e 0,45) |
+| PySR × onda amortecida | 0 → 0 | não → não (melhor distância algébrica 0,27: falta o fator `exp(−damping·t/2)`) |
+| DEAP/gplearn/PySR × MHS | 0 → 0 | não → não (melhor distância algébrica 0,33, PySR `length*cos(t*(a + b/(c − mass)))`: aproximação racional de `sqrt(10/mass)`, não identidade) |
+| gplearn × onda amortecida | 0 → 0 | não → não |
+
+Os ganhos da queda livre vêm de `height/t + height/t`, `(t + t)*c`, `t*c + t`, `t/c` e `neg(c)*t`, agora reconhecidos. Nos
+oscilatórios a distância algébrica confirma o diagnóstico da rodada O15: a única estrutura correta com constantes aproximadas é
+a repetição do DEAP na onda, e uma repetição em três não basta para convergir.
+
+**Controle positivo (correção O16).** `positive_control` avalia a forma primária em todos os pontos e as formas equivalentes
+declaradas sem os pontos em que algum operador protegido ativa a proteção (`protected_points`: `|den| < division_epsilon`,
+`|x| < log_epsilon` no `log`, `|x| > exp_clip` no `exp`, potência recortada ou não finita); contagem em `pontos_protegidos`
+(dados) e `pontos_protegidos_grid`. Motivo: `2*height/t` é exata para `t > 0`, mas em `t < 0,001` a divisão protegida devolve 1
+em vez do limite 0, e o controle reprovava a forma.
 
 ### Tempo de parede por etapa (s; execuções em paralelo competindo pela CPU de 12 núcleos)
 

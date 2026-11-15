@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from physics_llm_sr.symbolic.canonicalization import algebraic_normal_form
 from physics_llm_sr.symbolic.expression import Expr
 from physics_llm_sr.symbolic.tree_distance import (
     DEFAULT_TREE_DISTANCE_PARAMS,
@@ -80,6 +81,25 @@ def regression_metrics(y: np.ndarray, yhat: np.ndarray) -> dict[str, float]:
     return {"mae": mae(y, yhat), "mse": mse(y, yhat), "r2": r, "one_minus_r2": 1.0 - r}
 
 
+def tree_distance_algebraic(
+    expr: Expr,
+    ground_truth: Expr,
+    equivalent_forms: Sequence[Expr] = (),
+    params: TreeDistanceParams = DEFAULT_TREE_DISTANCE_PARAMS,
+) -> float:
+    """Distância SECUNDÁRIA após a forma normal algébrica (mesmos parâmetros, α do GAP-10).
+
+    ``min`` sobre a GT e as formas equivalentes declaradas de
+    ``tree_distance(algebraic_normal_form(expr), algebraic_normal_form(alvo))``. Reconhece
+    identidades exatas (``u + u = 2u``, ``u/c = (1/c)u``, ``cos`` par...; lista em
+    :func:`~physics_llm_sr.symbolic.canonicalization.algebraic_normal_form`). Nunca substitui a
+    primária, que é a usada na comparação com as tabelas do artigo.
+    """
+    found = algebraic_normal_form(expr)
+    targets = (ground_truth, *equivalent_forms)
+    return min(tree_distance(found, algebraic_normal_form(t), params) for t in targets)
+
+
 def structural_metrics(
     expr: Expr,
     ground_truth: Expr,
@@ -88,15 +108,20 @@ def structural_metrics(
 ) -> dict[str, float]:
     """Distâncias estruturais.
 
-    - ``tree_distance``: PRIMÁRIA, à GT do artigo.
+    - ``tree_distance``: PRIMÁRIA, à GT do artigo (a usada na comparação com o artigo).
     - ``tree_distance_equivalent_min``: SECUNDÁRIA (rotulada), mínimo sobre a GT e as formas
       fisicamente equivalentes declaradas. Nunca substitui a primária.
+    - ``tree_distance_algebraic``: SECUNDÁRIA (rotulada), como a anterior, mas após a forma
+      normal algébrica dos dois lados (:func:`tree_distance_algebraic`).
     """
     primary = tree_distance(expr, ground_truth, params)
     others = [tree_distance(expr, f, params) for f in equivalent_forms]
     return {
         "tree_distance": primary,
         "tree_distance_equivalent_min": min([primary, *others]),
+        "tree_distance_algebraic": tree_distance_algebraic(
+            expr, ground_truth, equivalent_forms, params
+        ),
     }
 
 

@@ -367,7 +367,12 @@ def _manifest(
     )
     metric_keys = [k for k in row if k.startswith(("train_", "validation_", "test_"))]
     metrics = {k: row[k] for k in metric_keys if k != "train_hash"}
-    for k in ("tree_distance", "tree_distance_equivalent_min", "exact_recovery"):
+    for k in (
+        "tree_distance",
+        "tree_distance_equivalent_min",
+        "tree_distance_algebraic",
+        "exact_recovery",
+    ):
         if k in row:
             metrics[k] = row[k]
     manifest = base.model_copy(

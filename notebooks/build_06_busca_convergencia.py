@@ -50,7 +50,8 @@ as repetições na queda livre "não convergem". Aqui a busca de configuração 
 |---|---|
 | **equação de referência** | a lei física analítica que gera os dados (ex.: `sqrt(2*9.81*height)`) |
 | **forma equivalente** | outra expressão fisicamente idêntica declarada pelo cenário (queda livre: `9.81*t`, pois `height = g t²/2`) |
-| **critério de convergência** | repetição bem sucedida: `min(distância estrutural, distância equivalente) ≤ limiar` **e** `1 − R²` (teste limpo) `≤ limiar`; a configuração converge se a fração de repetições bem sucedidas `≥ fração mínima` |
+| **critério de convergência** | repetição bem sucedida: `min(distância estrutural, distância equivalente, distância algébrica) ≤ limiar` **e** `1 − R²` (teste limpo) `≤ limiar`; a configuração converge se a fração de repetições bem sucedidas `≥ fração mínima` |
+| **distância algébrica** | métrica secundária: distância estrutural após uma forma normal algébrica (identidades exatas como `u + u = 2u`, `u/c = (1/c)u`, `cos` par); a primária continua sendo a da comparação com o artigo |
 | **configuração candidata** | dicionário de caminhos de configuração (`sr.*`, `loss.normalization`) → valor, com os **desvios** em relação ao baseline literal marcados |
 | **desvio declarado** | valor diferente do artigo / das hipóteses H-02 e H-03 do baseline literal; a reprodução literal continua usando os valores do artigo |
 | **repetição (semente derivada)** | execução independente; dados, divisão treino/validação/teste e busca usam sementes derivadas da semente mestra |
@@ -107,9 +108,10 @@ code(r"""
 ALGORITMO = "gplearn"  # "gplearn" | "deap" | "pysr"
 CENARIO = "free_fall"  # "free_fall" | "harmonic_motion" | "damped_wave"
 CRITERIO = busca.ConvergenceCriterion(
-    max_tree_distance=0.05,  # min(distância estrutural, distância equivalente) <= 0,05
+    max_tree_distance=0.05,  # min(distância estrutural, equivalente, algébrica) <= 0,05
     max_one_minus_r2=1e-3,  # 1 - R² no teste limpo <= 1e-3
     min_success_fraction=2 / 3,  # fração mínima de repetições bem sucedidas
+    use_algebraic=True,  # False = critério das rodadas O14/O15 (sem a distância algébrica)
 )
 ORCAMENTO_MAXIMO = 400_000  # custo nominal máximo de uma candidata (ver texto acima)
 REPETICOES = 3  # repetições por candidata na triagem e no refinamento
@@ -289,7 +291,7 @@ else:
     )
     TENTATIVAS = [CONFIRMACAO]
 display(busca.load_stage_table(ALGORITMO, CENARIO, busca.STAGE_CONFIRMATION, RAIZ_SAIDA)[COLUNAS + ["sementes"]])
-display(CONFIRMACAO.reports[ESCOLHIDA.label][["repeticao", "semente_busca", "equacao_descoberta", "um_menos_r2_teste", "distancia_estrutural", "distancia_equivalente_min"]])
+display(CONFIRMACAO.reports[ESCOLHIDA.label][["repeticao", "semente_busca", "equacao_descoberta", "um_menos_r2_teste", "distancia_estrutural", "distancia_equivalente_min", "distancia_algebrica"]])
 print("configuração confirmada:", ESCOLHIDA.label, "| converge:", bool(CONFIRMACAO.table.iloc[0]["converge"]))
 print("sementes disjuntas das da busca:", not (CONFIRMACAO.seeds & SEMENTES_DA_BUSCA))
 """)
