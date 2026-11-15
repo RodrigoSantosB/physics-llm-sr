@@ -1,0 +1,55 @@
+{
+  "algoritmo": "deap",
+  "cenario": "free_fall",
+  "rotulo": "H1-H4 cx 0,7 / mut 0,2, torneio 7, 1000x200 | 500x200",
+  "hipotese": "",
+  "loss_formulation": "literal",
+  "search_budget": {
+    "population": 500,
+    "generations": 200,
+    "early_stopping": false,
+    "min_relative_improvement": 0.001,
+    "patience": 3,
+    "max_cell_seconds": 1800.0,
+    "pysr_niterations": 10,
+    "pysr_population_size": 50,
+    "pysr_ncycles_per_iteration": 50
+  },
+  "hyperparameters": {
+    "sr.deap.crossover_prob": 0.7,
+    "sr.deap.mutation_prob": 0.2,
+    "sr.deap.tournament_size": 7
+  },
+  "overrides": {
+    "sr.deap.crossover_prob": 0.7,
+    "sr.deap.mutation_prob": 0.2,
+    "sr.deap.tournament_size": 7,
+    "sr.early_stopping.enabled": false,
+    "sr.generations": 200,
+    "sr.population": 500
+  },
+  "desvios_do_baseline_literal": [
+    "sr.deap.crossover_prob",
+    "sr.deap.mutation_prob",
+    "sr.deap.tournament_size",
+    "sr.early_stopping.enabled",
+    "sr.generations",
+    "sr.population"
+  ],
+  "criterio": {
+    "max_tree_distance": 0.05,
+    "max_one_minus_r2": 0.001,
+    "min_success_fraction": 0.6666666666666666
+  },
+  "confirmada": true,
+  "confirmacao": {
+    "converge": true,
+    "n_sucesso": 4,
+    "n_execucoes": 5,
+    "taxa_sucesso": 0.8,
+    "expressao_tipica": "t * 9.806971913486272",
+    "tempo_medio_s": 167.76222328940057,
+    "sementes": "3829120860,3029571990,1713216709,3692066227,3559994210"
+  },
+  "notebook_05": "ALGORITMO = 'deap'\nFORMULACAO_PERDA = 'literal'\nORCAMENTO = SearchBudget(population=500, generations=200, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n    'sr.deap.crossover_prob': 0.7,\n    'sr.deap.mutation_prob': 0.2,\n    'sr.deap.tournament_size': 7\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+}

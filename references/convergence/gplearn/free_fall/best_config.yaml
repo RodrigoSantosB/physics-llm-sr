@@ -1,0 +1,65 @@
+algoritmo: gplearn
+cenario: free_fall
+rotulo: H1-H4 (0,20), torneio 20, mutação pontual 0,1, 1000x100
+hipotese: ''
+loss_formulation: literal
+search_budget:
+  population: 1000
+  generations: 100
+  early_stopping: false
+  min_relative_improvement: 0.001
+  patience: 3
+  max_cell_seconds: 1800.0
+  pysr_niterations: 10
+  pysr_population_size: 50
+  pysr_ncycles_per_iteration: 50
+hyperparameters:
+  sr.gplearn.const_range:
+  - 0.0
+  - 20.0
+  sr.gplearn.p_crossover: 0.7
+  sr.gplearn.p_hoist_mutation: 0.05
+  sr.gplearn.p_point_mutation: 0.1
+  sr.gplearn.p_subtree_mutation: 0.1
+  sr.gplearn.tournament_size: 20
+overrides:
+  sr.early_stopping.enabled: false
+  sr.generations: 100
+  sr.gplearn.const_range:
+  - 0.0
+  - 20.0
+  sr.gplearn.p_crossover: 0.7
+  sr.gplearn.p_hoist_mutation: 0.05
+  sr.gplearn.p_point_mutation: 0.1
+  sr.gplearn.p_subtree_mutation: 0.1
+  sr.gplearn.tournament_size: 20
+  sr.population: 1000
+desvios_do_baseline_literal:
+- sr.early_stopping.enabled
+- sr.generations
+- sr.gplearn.const_range
+- sr.gplearn.p_crossover
+- sr.gplearn.p_hoist_mutation
+- sr.gplearn.p_point_mutation
+- sr.gplearn.p_subtree_mutation
+- sr.gplearn.tournament_size
+- sr.population
+criterio:
+  max_tree_distance: 0.05
+  max_one_minus_r2: 0.001
+  min_success_fraction: 0.6666666666666666
+confirmada: true
+confirmacao:
+  converge: true
+  n_sucesso: 4
+  n_execucoes: 5
+  taxa_sucesso: 0.8
+  expressao_tipica: t * 9.82048444036868
+  tempo_medio_s: 827.3685963166005
+  sementes: 2266899412,1670994111,2591830621,2669037227,2844254325
+notebook_05: "ALGORITMO = 'gplearn'\nFORMULACAO_PERDA = 'literal'\nORCAMENTO = SearchBudget(population=1000,\
+  \ generations=100, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0,\
+  \ pysr_niterations=10, pysr_population_size=50, pysr_ncycles_per_iteration=50)\nHIPERPARAMETROS = {\n\
+  \    'sr.gplearn.const_range': [0.0, 20.0],\n    'sr.gplearn.p_crossover': 0.7,\n    'sr.gplearn.p_hoist_mutation':\
+  \ 0.05,\n    'sr.gplearn.p_point_mutation': 0.1,\n    'sr.gplearn.p_subtree_mutation': 0.1,\n    'sr.gplearn.tournament_size':\
+  \ 20\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"

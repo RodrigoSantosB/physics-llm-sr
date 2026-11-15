@@ -1204,7 +1204,7 @@ def load_stage_table(
     return table
 
 
-def candidate_from_row(row: Mapping[str, Any], hypothesis: str = "") -> Candidate:
+def candidate_from_row(row: Mapping[str, Any] | pd.Series, hypothesis: str = "") -> Candidate:
     """Reconstrói a :class:`Candidate` de uma linha de tabela de etapa (coluna ``config``)."""
     overrides = json.loads(str(row["config"]))
     return make_candidate(str(row["rotulo"]), overrides, hypothesis)

@@ -1,0 +1,68 @@
+{
+  "algoritmo": "pysr",
+  "cenario": "damped_wave",
+  "rotulo": "perda normalizada + MSE + sqrt, ciclos 380, 20 it.",
+  "hipotese": "GAP-02/GAP-05/H5",
+  "loss_formulation": "normalized",
+  "search_budget": {
+    "population": 100,
+    "generations": 50,
+    "early_stopping": false,
+    "min_relative_improvement": 0.001,
+    "patience": 3,
+    "max_cell_seconds": 1800.0,
+    "pysr_niterations": 20,
+    "pysr_population_size": 50,
+    "pysr_ncycles_per_iteration": 380
+  },
+  "hyperparameters": {
+    "sr.pysr.loss": "mse",
+    "sr.operators.pysr": [
+      "add",
+      "sub",
+      "mul",
+      "div",
+      "pow",
+      "neg",
+      "exp",
+      "log",
+      "sin",
+      "cos",
+      "sqrt"
+    ]
+  },
+  "overrides": {
+    "loss.normalization": "normalized",
+    "sr.pysr.loss": "mse",
+    "sr.operators.pysr": [
+      "add",
+      "sub",
+      "mul",
+      "div",
+      "pow",
+      "neg",
+      "exp",
+      "log",
+      "sin",
+      "cos",
+      "sqrt"
+    ],
+    "sr.early_stopping.enabled": false,
+    "sr.pysr.ncycles_per_iteration": 380,
+    "sr.pysr.niterations": 20
+  },
+  "desvios_do_baseline_literal": [
+    "loss.normalization",
+    "sr.pysr.loss",
+    "sr.operators.pysr",
+    "sr.early_stopping.enabled",
+    "sr.pysr.niterations"
+  ],
+  "criterio": {
+    "max_tree_distance": 0.05,
+    "max_one_minus_r2": 0.001,
+    "min_success_fraction": 0.6666666666666666
+  },
+  "confirmada": false,
+  "notebook_05": "ALGORITMO = 'pysr'\nFORMULACAO_PERDA = 'normalized'\nORCAMENTO = SearchBudget(population=100, generations=50, early_stopping=False, min_relative_improvement=0.001, patience=3, max_cell_seconds=1800.0, pysr_niterations=20, pysr_population_size=50, pysr_ncycles_per_iteration=380)\nHIPERPARAMETROS = {\n    'sr.pysr.loss': 'mse',\n    'sr.operators.pysr': ['add', 'sub', 'mul', 'div', 'pow', 'neg', 'exp', 'log', 'sin', 'cos', 'sqrt']\n}\n# em StudyDesign(...): hyperparameters=tuple(HIPERPARAMETROS.items())"
+}
