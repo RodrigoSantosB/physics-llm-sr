@@ -276,3 +276,23 @@ def test_parallel_confirmation_uses_one_new_master_seed_per_repetition(tmp_path:
     assert set(table["rotulo"]) == {"c", "d"}  # a confirmação acumula candidatas
     labels = {json.loads(x)["rotulo"] for x in (conf.stage_dir / cs.STAGE_LOG_FILE).open()}
     assert labels == {"c", "d"}
+
+
+def test_confirm_cheapest_walks_converged_configurations_by_cost(tmp_path: Path) -> None:
+    cheap = cs.make_candidate("barata", {"sr.population": 6, "sr.generations": 2})
+    dear = cs.make_candidate("cara", {"sr.population": 12, "sr.generations": 2})
+    stage = cs.run_stage(
+        "gplearn", "free_fall", [dear, cheap], repetitions=1, master_seed=4,
+        criterion=LOOSE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    chosen, conf, tried = cs.confirm_cheapest(
+        "gplearn", "free_fall", [stage], n_repetitions=1, search_master_seed=4,
+        criterion=LOOSE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    assert chosen.label == "barata" and len(tried) == 1 and conf.table.iloc[0]["converge"]
+    chosen, conf, tried = cs.confirm_cheapest(
+        "gplearn", "free_fall", [stage], n_repetitions=1, search_master_seed=4,
+        criterion=IMPOSSIBLE, output_root=tmp_path, **TINY,
+    )  # fmt: skip
+    assert [t.candidates[0].label for t in tried] == ["barata", "cara"]
+    assert not conf.table.iloc[0]["converge"]

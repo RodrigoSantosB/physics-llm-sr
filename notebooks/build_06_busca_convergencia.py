@@ -246,8 +246,10 @@ md(r"""
 
 **Objetivo:** evitar escolher a semente sortuda: a configuração escolhida é reexecutada com a semente mestra deslocada
 (`SEMENTE_MESTRA + DESLOCAMENTO_SEMENTE`): dados, divisão e busca novos.
-**Chamada:** `confirm(ALGORITMO, CENARIO, ESCOLHIDA, REPETICOES_CONFIRMACAO, DESLOCAMENTO_SEMENTE, used_seeds=...)`;
-recusa a confirmação se alguma semente já usada na busca reaparecer.
+**Chamada:** `confirm_cheapest(...)` percorre as configurações que convergiram na triagem e no refinamento, da mais barata à mais cara,
+e chama `confirm(...)` até uma convergir também em sementes novas (com 3 repetições, "converge" ainda é ruidoso). Em paralelo, cada
+repetição usa a semente mestra `SEMENTE_MESTRA + DESLOCAMENTO_SEMENTE + k`. A confirmação é recusada se alguma semente já usada na
+busca reaparecer.
 **Saída a conferir:** taxa de sucesso nas sementes novas e as sementes usadas (disjuntas das da busca).
 **Critério:** a configuração é aceita se `converge = True` também na confirmação.
 """)
@@ -255,21 +257,40 @@ recusa a confirmação se alguma semente já usada na busca reaparecer.
 code(r"""
 # Etapa 5 — confirmação em sementes novas
 SEMENTES_DA_BUSCA = set().union(*(etapa.seeds for etapa in ETAPAS))
-CONFIRMACAO = busca.confirm(
-    ALGORITMO,
-    CENARIO,
-    ESCOLHIDA,
-    REPETICOES_CONFIRMACAO,
-    DESLOCAMENTO_SEMENTE,
-    search_master_seed=SEMENTE_MESTRA,
-    used_seeds=SEMENTES_DA_BUSCA,
-    criterion=CRITERIO,
-    output_root=RAIZ_SAIDA,
-    progress=print,
-    **DADOS,
-)
-display(CONFIRMACAO.table[COLUNAS + ["sementes"]])
+if bool(TRIAGEM.table.iloc[0]["converge"]):
+    # da mais barata à mais cara entre as que convergiram, até uma confirmar (máx. 3 tentativas)
+    ESCOLHIDA, CONFIRMACAO, TENTATIVAS = busca.confirm_cheapest(
+        ALGORITMO,
+        CENARIO,
+        ETAPAS,
+        REPETICOES_CONFIRMACAO,
+        DESLOCAMENTO_SEMENTE,
+        search_master_seed=SEMENTE_MESTRA,
+        criterion=CRITERIO,
+        output_root=RAIZ_SAIDA,
+        parallel=PARALELO,
+        progress=print,
+        **DADOS,
+    )
+else:
+    CONFIRMACAO = busca.confirm(
+        ALGORITMO,
+        CENARIO,
+        ESCOLHIDA,
+        REPETICOES_CONFIRMACAO,
+        DESLOCAMENTO_SEMENTE,
+        search_master_seed=SEMENTE_MESTRA,
+        used_seeds=SEMENTES_DA_BUSCA,
+        criterion=CRITERIO,
+        output_root=RAIZ_SAIDA,
+        parallel=PARALELO,
+        progress=print,
+        **DADOS,
+    )
+    TENTATIVAS = [CONFIRMACAO]
+display(busca.load_stage_table(ALGORITMO, CENARIO, busca.STAGE_CONFIRMATION, RAIZ_SAIDA)[COLUNAS + ["sementes"]])
 display(CONFIRMACAO.reports[ESCOLHIDA.label][["repeticao", "semente_busca", "equacao_descoberta", "um_menos_r2_teste", "distancia_estrutural", "distancia_equivalente_min"]])
+print("configuração confirmada:", ESCOLHIDA.label, "| converge:", bool(CONFIRMACAO.table.iloc[0]["converge"]))
 print("sementes disjuntas das da busca:", not (CONFIRMACAO.seeds & SEMENTES_DA_BUSCA))
 """)
 
@@ -291,7 +312,7 @@ ARQUIVOS = busca.export_best(
     ALGORITMO,
     CENARIO,
     ESCOLHIDA,
-    ETAPAS,
+    [*ETAPAS, *TENTATIVAS],
     criterion=CRITERIO,
     confirmation=CONFIRMACAO,
     output_root=RAIZ_SAIDA,

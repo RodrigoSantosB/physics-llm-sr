@@ -973,6 +973,52 @@ def confirm(
     return result
 
 
+def confirm_cheapest(
+    algorithm: str,
+    scenario: str,
+    stages: Sequence[StageResult],
+    n_repetitions: int = 5,
+    seed_offset: int = DEFAULT_CONFIRMATION_OFFSET,
+    *,
+    search_master_seed: int = 42,
+    max_attempts: int = 3,
+    **kwargs: Any,
+) -> tuple[Candidate, StageResult, list[StageResult]]:
+    """Confirma as configurações que convergiram, da mais barata à mais cara, até uma confirmar.
+
+    Usa sementes novas (:func:`confirm`).
+    Com 3 repetições na busca, "converge" (2/3) ainda é ruidoso: a configuração mais barata pode
+    falhar em sementes novas. Esta função percorre as que convergiram em ``stages`` (ordenadas
+    por custo estimado e tempo médio, sem repetir rótulos), no máximo ``max_attempts``.
+    Devolve ``(escolhida, confirmação dela, todas as confirmações)``; se nenhuma confirmar, a
+    escolhida é a de maior taxa de sucesso na confirmação. ``kwargs`` vão para :func:`confirm`.
+    """
+    rows = [row for s in stages for row in s.converged.to_dict("records")]
+    by_label = {c.label: c for s in stages for c in s.candidates}
+    if not rows:
+        raise ConvergenceSearchError("nenhuma configuração convergiu na busca")
+    rows.sort(key=lambda r: (float(r["custo_estimado"]), float(r["tempo_medio_s"])))
+    order = list(dict.fromkeys(str(r["rotulo"]) for r in rows))[:max_attempts]
+    used = set().union(*(s.seeds for s in stages))
+    results: list[StageResult] = []
+    for label in order:
+        result = confirm(
+            algorithm,
+            scenario,
+            by_label[label],
+            n_repetitions,
+            seed_offset,
+            search_master_seed=search_master_seed,
+            used_seeds=used,
+            **kwargs,
+        )
+        results.append(result)
+        if bool(result.table.iloc[0]["converge"]):
+            return by_label[label], result, results
+    best = max(results, key=lambda r: float(r.table.iloc[0]["taxa_sucesso"]))
+    return best.candidates[0], best, results
+
+
 def _confirm_parallel(
     algorithm: str,
     scenario: str,
@@ -1303,6 +1349,7 @@ __all__ = [
     "candidate_from_row",
     "cheaper_candidates",
     "confirm",
+    "confirm_cheapest",
     "deviations_from_base",
     "estimated_cost",
     "export_best",
